@@ -62,7 +62,6 @@ class InterestRateSwap(Instrument):
     def maturity(self):
         return self.receiving_leg.maturity
 
-    @property
     def is_expired(self) -> bool:
         return self.valuation_date >= self.maturity
 
@@ -128,7 +127,7 @@ class InterestRateSwap(Instrument):
 
     def mtm(self, forecast_index: Index, discount_nodes: CurveNodes) -> float:
         """Mark-to-market NPV of the swap."""
-        if self.is_expired:
+        if self.is_expired():
             return 0.0
         return self._swap_ql(forecast_index, discount_nodes).NPV()
 
