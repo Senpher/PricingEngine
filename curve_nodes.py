@@ -156,10 +156,6 @@ class CurveNodes:
         # fallback (shouldn't hit due to earlier checks)
         return self
 
-    # backward compatibility: older code expected a `bump_zero_rates` method
-    def bump_zero_rates(self, bp: float) -> CurveNodes:
-        return self.bump(bp)
-
     # convenience alternate constructors
     @classmethod
     def from_zeros(cls, asof: Date, dates: Sequence[Date], zeros: Sequence[float],
