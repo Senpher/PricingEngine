@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Type
 
-import pandas as pd
 from QuantLib import DiscountingSwapEngine, Index, Swap, VanillaSwap
+
 from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg, SwapLeg
 from pricingengine.instruments._instrument import Instrument
 from pricingengine.termstructures.curve_nodes import CurveNodes
@@ -21,7 +21,9 @@ class InterestRateSwap(Instrument):
     def __post_init__(self):
         t1, t2 = type(self.paying_leg), type(self.receiving_leg)
         if not issubclass(t1, SwapLeg) or not issubclass(t2, SwapLeg):
-            raise ValueError("'paying_leg' and 'receiving_leg' must be a subclass of `SwapLeg`")
+            raise ValueError(
+                "'paying_leg' and 'receiving_leg' must be a subclass of `SwapLeg`"
+            )
         if issubclass(t1, FixedLeg) and issubclass(t2, FixedLeg):
             raise ValueError("both legs cannot be FixedLeg")
         if issubclass(t1, FloatingLeg) and issubclass(t2, FloatingLeg):
@@ -96,9 +98,15 @@ class InterestRateSwap(Instrument):
         swap.setPricingEngine(self._discount_engine(discount_nodes))
         return swap
 
-    def _vanilla_swap_ql(self, forecast_index: Index, discount_nodes: CurveNodes) -> VanillaSwap:
+    def _vanilla_swap_ql(
+        self, forecast_index: Index, discount_nodes: CurveNodes
+    ) -> VanillaSwap:
         """QuantLib VanillaSwap (used for fairRate/fairSpread & swaptions)."""
-        swap_type = VanillaSwap.Payer if self.fixed_leg is self.paying_leg else VanillaSwap.Receiver
+        swap_type = (
+            VanillaSwap.Payer
+            if self.fixed_leg is self.paying_leg
+            else VanillaSwap.Receiver
+        )
         swap = VanillaSwap(
             swap_type,
             self.fixed_leg.nominal,
@@ -134,13 +142,13 @@ class InterestRateSwap(Instrument):
         idx = 0 if self.floating_leg is self.paying_leg else 1
         return self._swap_ql(forecast_index, discount_nodes).legBPS(idx)
 
-    def pv01(self, forecast_index: Index, discount_nodes: CurveNodes, bump_bp: float = 1.0) -> float:
-        """
-        Net PV01 (DV01): reprice with a parallel shift of the DISCOUNT curve by `bump_bp`.
-        Positive means NPV increases when discount rates fall (convention varies; document yours).
+    def pv01(
+        self, forecast_index: Index, discount_nodes: CurveNodes, bump_bp: float = 1.0
+    ) -> float:
+        """Net PV01 via a parallel bump of the discount curve.
+
+        Positive means the NPV rises when discount rates fall.
         """
         base = self._swap_ql(forecast_index, discount_nodes).NPV()
-        bumped = self._swap_ql(
-            forecast_index, discount_nodes.bump_zero_rates(bp=bump_bp)
-        ).NPV()
+        bumped = self._swap_ql(forecast_index, discount_nodes.bump(bump_bp)).NPV()
         return (bumped - base) / bump_bp  # per bp

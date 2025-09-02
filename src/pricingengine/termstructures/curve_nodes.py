@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Sequence, Literal
 from math import exp, log
+from typing import Literal, Sequence
 
 from QuantLib import (
-    Date, DayCounter, YieldTermStructureHandle, ZeroCurve, DiscountCurve,
-    ForwardCurve, FlatForward, QuoteHandle, SimpleQuote
+    Date,
+    DayCounter,
+    DiscountCurve,
+    FlatForward,
+    ForwardCurve,
+    QuoteHandle,
+    SimpleQuote,
+    YieldTermStructureHandle,
+    ZeroCurve,
 )
 
 QuoteKind = Literal["zero", "discount", "forward", "flat"]
@@ -22,6 +29,7 @@ class CurveNodes:
     - yts_handle(): lazy-builds + caches a QuantLib YieldTermStructureHandle.
     - bump(bp): returns a NEW CurveNodes with a parallel bp shift (zeros/flat/discount).
     """
+
     asof: Date
     dates: Sequence[Date]
     quotes: Sequence[float]
@@ -30,7 +38,9 @@ class CurveNodes:
     role: CurveRole = "discounting"
 
     # cached handle (not part of identity/eq)
-    _yts_handle: YieldTermStructureHandle | None = field(default=None, init=False, repr=False, compare=False)
+    _yts_handle: YieldTermStructureHandle | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     # ---------- lifecycle ----------
     def __post_init__(self):
@@ -71,13 +81,20 @@ class CurveNodes:
 
         if self.quote_kind == "zero":
             if len(self.quotes) == 1:
-                yts = FlatForward(self.asof, QuoteHandle(SimpleQuote(self.quotes[0])), self.day_count)
+                yts = FlatForward(
+                    self.asof, QuoteHandle(SimpleQuote(self.quotes[0])), self.day_count
+                )
             else:
                 yts = ZeroCurve(self.dates, self.quotes, self.day_count)
         elif self.quote_kind == "discount":
             if len(self.quotes) < 2:
                 raise ValueError("discount curve needs at least two discount nodes")
-            yts = DiscountCurve(self.dates, self.quotes, self.day_count)
+            dates = list(self.dates)
+            discounts = list(self.quotes)
+            if dates[0] != self.asof:
+                dates.insert(0, self.asof)
+                discounts.insert(0, 1.0)
+            yts = DiscountCurve(dates, discounts, self.day_count)
         elif self.quote_kind == "forward":
             if len(self.quotes) < 2:
                 raise ValueError("forward curve needs at least two nodes")
@@ -85,7 +102,9 @@ class CurveNodes:
         elif self.quote_kind == "flat":
             if len(self.quotes) != 1:
                 raise ValueError("quote_kind='flat' expects exactly one zero rate")
-            yts = FlatForward(self.asof, QuoteHandle(SimpleQuote(self.quotes[0])), self.day_count)
+            yts = FlatForward(
+                self.asof, QuoteHandle(SimpleQuote(self.quotes[0])), self.day_count
+            )
         else:
             raise ValueError(f"Unsupported quote_kind: {self.quote_kind}")
 
@@ -103,11 +122,12 @@ class CurveNodes:
         return self.yts_handle().discount(date)
 
     def bump(self, bp: float) -> CurveNodes:
-        """
-        Parallel bump by `bp` basis points and return a NEW CurveNodes.
-        - For 'zero'/'flat': add bp/1e4 to each zero rate.
-        - For 'discount': convert DF -> zero via r = -ln(DF)/t, bump r, then DF' = exp(-(r+bp)*t).
-        - For 'forward': currently approximates by adding bp/1e4 to forwards (simple, refine later).
+        """Return a new curve with a parallel bump of ``bp`` basis points.
+
+        - For ``zero`` and ``flat`` curves, bp/1e4 is added to each rate.
+        - For ``discount`` curves, DFs are converted to rates, bumped and
+          converted back via ``exp(-(r + bump)*t)``.
+        - For ``forward`` curves, forwards are simply shifted by bp/1e4.
         """
         bump_r = bp / 10_000.0
 
@@ -158,11 +178,37 @@ class CurveNodes:
 
     # convenience alternate constructors
     @classmethod
-    def from_zeros(cls, asof: Date, dates: Sequence[Date], zeros: Sequence[float],
-                   day_count: DayCounter, role: CurveRole = "discounting") -> CurveNodes:
-        return cls(asof=asof, dates=dates, quotes=zeros, day_count=day_count, quote_kind="zero", role=role)
+    def from_zeros(
+        cls,
+        asof: Date,
+        dates: Sequence[Date],
+        zeros: Sequence[float],
+        day_count: DayCounter,
+        role: CurveRole = "discounting",
+    ) -> CurveNodes:
+        return cls(
+            asof=asof,
+            dates=dates,
+            quotes=zeros,
+            day_count=day_count,
+            quote_kind="zero",
+            role=role,
+        )
 
     @classmethod
-    def from_discounts(cls, asof: Date, dates: Sequence[Date], discounts: Sequence[float],
-                       day_count: DayCounter, role: CurveRole = "discounting") -> CurveNodes:
-        return cls(asof=asof, dates=dates, quotes=discounts, day_count=day_count, quote_kind="discount", role=role)
+    def from_discounts(
+        cls,
+        asof: Date,
+        dates: Sequence[Date],
+        discounts: Sequence[float],
+        day_count: DayCounter,
+        role: CurveRole = "discounting",
+    ) -> CurveNodes:
+        return cls(
+            asof=asof,
+            dates=dates,
+            quotes=discounts,
+            day_count=day_count,
+            quote_kind="discount",
+            role=role,
+        )
