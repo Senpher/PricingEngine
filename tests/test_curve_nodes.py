@@ -2,7 +2,7 @@ import math
 
 import QuantLib as ql
 
-from pricingengine.termstructures.curve_nodes import CurveNodes
+from pricingengine.structures.curve_nodes import CurveNodes
 
 
 def test_flat_curve_discount_and_bump() -> None:

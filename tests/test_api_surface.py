@@ -1,5 +1,5 @@
 from pricingengine.irs import InterestRateSwap
-from pricingengine.termstructures.curve_nodes import CurveNodes
+from pricingengine.structures.curve_nodes import CurveNodes
 
 
 def test_api_surface() -> None:

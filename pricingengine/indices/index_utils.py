@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from QuantLib import Euribor6M, Index, Months, Period, Simple, USDLibor
 
-from pricingengine.termstructures.curve_nodes import CurveNodes
+from pricingengine.structures.curve_nodes import CurveNodes
 
 
 def make_forecast_index(name: str, forecast_nodes: CurveNodes) -> Index:

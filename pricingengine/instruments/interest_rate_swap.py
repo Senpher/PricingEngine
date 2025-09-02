@@ -7,7 +7,7 @@ from QuantLib import DiscountingSwapEngine, Index, Swap, VanillaSwap
 
 from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg, SwapLeg
 from pricingengine.instruments._instrument import Instrument
-from pricingengine.termstructures.curve_nodes import CurveNodes
+from pricingengine.structures.curve_nodes import CurveNodes
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
