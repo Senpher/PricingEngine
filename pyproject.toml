@@ -1,39 +1,10 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pricingengine"
 version = "0.1.0"
-description = "Tiny pricing engine for interest-rate swaps"
 readme = "README.md"
-requires-python = ">=3.10"
 dependencies = [
-    "QuantLib",
-    "pandas",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "ruff",
-    "black",
-    "mypy",
-    "typing-extensions",
-]
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.pytest.ini_options]
-pythonpath = ["src"]
-
-[tool.uv]
-dev-dependencies = [
-    "pytest",
-    "ruff",
-    "black",
-    "mypy",
-    "typing-extensions",
 ]
 
