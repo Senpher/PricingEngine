@@ -1,10 +1,21 @@
 from __future__ import annotations
 
-from QuantLib import (Date, DayCounter, YieldTermStructureHandle, ZeroCurve, DiscountCurve, ForwardCurve, FlatForward,
-                      QuoteHandle, SimpleQuote, )
-from dataclasses import dataclass, field, replace
-from math import log, exp
-from typing import Sequence, Literal, Optional
+from dataclasses import dataclass, replace
+from functools import cached_property
+from math import exp, log
+from typing import Literal, Sequence
+
+from QuantLib import (
+    Date,
+    DayCounter,
+    DiscountCurve,
+    FlatForward,
+    ForwardCurve,
+    QuoteHandle,
+    SimpleQuote,
+    YieldTermStructureHandle,
+    ZeroCurve,
+)
 
 QuoteKind = Literal["zero", "discount", "forward", "flat"]
 CurveRole = Literal["discounting", "forecasting", "other"]
@@ -24,15 +35,13 @@ class CurveNodes:
     - as_of: evaluation date, metadata
     - role: how you intend to use it (discounting vs forecasting), just metadata
     """
+
     as_of: Date
     dates: Sequence[Date]
     quotes: Sequence[float]
     day_counter: DayCounter
     quote_kind: QuoteKind = "zero"
     role: CurveRole = "discounting"
-
-    # cached QuantLib handle (built on first use)
-    _yts_handle: Optional[YieldTermStructureHandle] = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self):
         if len(self.dates) == 0:
@@ -50,19 +59,15 @@ class CurveNodes:
     def nodes(self) -> tuple[tuple[Date, float], ...]:
         return tuple((date, quote) for date, quote in zip(self.dates, self.quotes))
 
+    @cached_property
     def yts_handle(self) -> YieldTermStructureHandle:
-        """
-        Build (once) and return a QuantLib YieldTermStructureHandle for these nodes.
-        Subsequent calls return the cached handle.
-        """
-        h = self._yts_handle
-        if h is not None:
-            return h
-
+        """Build and cache a QuantLib YieldTermStructureHandle for these nodes."""
         if self.quote_kind == "zero":
             if len(self.quotes) == 1:
                 yts = FlatForward(
-                    self.as_of, QuoteHandle(SimpleQuote(self.quotes[0])), self.day_counter
+                    self.as_of,
+                    QuoteHandle(SimpleQuote(self.quotes[0])),
+                    self.day_counter,
                 )
             else:
                 yts = ZeroCurve(self.dates, self.quotes, self.day_counter)
@@ -88,18 +93,16 @@ class CurveNodes:
         else:
             raise ValueError(f"Unsupported quote_kind: {self.quote_kind}")
 
-        handle = YieldTermStructureHandle(yts)
-        object.__setattr__(self, "_yts_handle", handle)  # cache in frozen dataclass
-        return handle
+        return YieldTermStructureHandle(yts)
 
     # nice alias for readability / compatibility
     def to_handle(self) -> YieldTermStructureHandle:
-        return self.yts_handle()
+        return self.yts_handle
 
     # ---------- utilities ----------
     def discount_factor(self, date: Date) -> float:
         """Convenience: DF(as_of, date) via the cached handle."""
-        return self.yts_handle().discount(date)
+        return self.yts_handle.discount(date)
 
     def bump(self, bp: float) -> CurveNodes:
         """Return a new curve with a parallel bump of ``bp`` basis points.
@@ -113,14 +116,15 @@ class CurveNodes:
 
         if self.quote_kind in {"zero", "flat"}:
             new_quotes = tuple(q + bump_r for q in self.quotes)
-            return replace(self,
-                           as_of=self.as_of,
-                           dates=self.dates,
-                           quotes=new_quotes,
-                           day_counter=self.day_counter,
-                           quote_kind=self.quote_kind,
-                           role=self.role,
-                           )
+            return replace(
+                self,
+                as_of=self.as_of,
+                dates=self.dates,
+                quotes=new_quotes,
+                day_counter=self.day_counter,
+                quote_kind=self.quote_kind,
+                role=self.role,
+            )
 
         if self.quote_kind == "discount":
             new_discounts: list[float] = []
@@ -132,25 +136,27 @@ class CurveNodes:
                 r = -log(df) / t
                 df_new = exp(-(r + bump_r) * t)
                 new_discounts.append(df_new)
-            return replace(self,
-                           as_of=self.as_of,
-                           dates=self.dates,
-                           quotes=tuple(new_discounts),
-                           day_counter=self.day_counter,
-                           quote_kind="discount",
-                           role=self.role,
-                           )
+            return replace(
+                self,
+                as_of=self.as_of,
+                dates=self.dates,
+                quotes=tuple(new_discounts),
+                day_counter=self.day_counter,
+                quote_kind="discount",
+                role=self.role,
+            )
 
         if self.quote_kind == "forward":
             new_forwards = tuple(f + bump_r for f in self.quotes)
-            return replace(self,
-                           as_of=self.as_of,
-                           dates=self.dates,
-                           quotes=new_forwards,
-                           day_counter=self.day_counter,
-                           quote_kind="forward",
-                           role=self.role,
-                           )
+            return replace(
+                self,
+                as_of=self.as_of,
+                dates=self.dates,
+                quotes=new_forwards,
+                day_counter=self.day_counter,
+                quote_kind="forward",
+                role=self.role,
+            )
 
         # fallback (shouldn't hit due to earlier checks)
         return self
@@ -158,12 +164,12 @@ class CurveNodes:
     # convenience alternate constructors
     @classmethod
     def from_zeros(
-            cls,
-            as_of: Date,
-            dates: Sequence[Date],
-            zeros: Sequence[float],
-            day_counter: DayCounter,
-            role: CurveRole = "discounting",
+        cls,
+        as_of: Date,
+        dates: Sequence[Date],
+        zeros: Sequence[float],
+        day_counter: DayCounter,
+        role: CurveRole = "discounting",
     ) -> CurveNodes:
         return cls(
             as_of=as_of,
@@ -176,12 +182,12 @@ class CurveNodes:
 
     @classmethod
     def from_discounts(
-            cls,
-            as_of: Date,
-            dates: Sequence[Date],
-            discounts: Sequence[float],
-            day_counter: DayCounter,
-            role: CurveRole = "discounting",
+        cls,
+        as_of: Date,
+        dates: Sequence[Date],
+        discounts: Sequence[float],
+        day_counter: DayCounter,
+        role: CurveRole = "discounting",
     ) -> CurveNodes:
         return cls(
             as_of=as_of,
@@ -194,12 +200,12 @@ class CurveNodes:
 
     @classmethod
     def from_forwards(
-            cls,
-            as_of: Date,
-            dates: Sequence[Date],
-            forwards: Sequence[float],
-            day_counter: DayCounter,
-            role: CurveRole = "forecasting",
+        cls,
+        as_of: Date,
+        dates: Sequence[Date],
+        forwards: Sequence[float],
+        day_counter: DayCounter,
+        role: CurveRole = "forecasting",
     ) -> CurveNodes:
         """Convenience constructor for forward-rate curves."""
         return cls(
@@ -213,12 +219,12 @@ class CurveNodes:
 
     @classmethod
     def from_flat(
-            cls,
-            as_of: Date,
-            maturity: Date,
-            zero: float,
-            day_counter: DayCounter,
-            role: CurveRole = "discounting",
+        cls,
+        as_of: Date,
+        maturity: Date,
+        zero: float,
+        day_counter: DayCounter,
+        role: CurveRole = "discounting",
     ) -> CurveNodes:
         """Flat zero-rate curve out to ``maturity``."""
         return cls(
