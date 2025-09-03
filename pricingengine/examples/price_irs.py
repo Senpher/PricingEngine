@@ -19,53 +19,32 @@ from QuantLib import (
 from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg
 from pricingengine.indices.index_utils import make_forecast_index
 from pricingengine.irs import InterestRateSwap
-from pricingengine.structures.curve_nodes import CurveNodes
+from pricingengine.termstructures.curve_nodes import CurveNodes
 
 
 def main() -> None:
-    asof = Date.todaysDate()
-    Settings.instance().evaluationDate = asof
+    as_of = Date.todaysDate()
+    Settings.instance().evaluationDate = as_of
 
     calendar = TARGET()
-    issue = asof
+    issue = as_of
     maturity = calendar.advance(issue, Period(5, Years))
-
-    fixed_schedule = Schedule(
-        issue,
-        maturity,
-        Period(12, Months),
-        calendar,
-        ModifiedFollowing,
-        ModifiedFollowing,
-        DateGeneration.Forward,
-        False,
-    )
-    float_schedule = Schedule(
-        issue,
-        maturity,
-        Period(6, Months),
-        calendar,
-        ModifiedFollowing,
-        ModifiedFollowing,
-        DateGeneration.Forward,
-        False,
-    )
 
     dc = Actual365Fixed()
 
     discount_nodes = CurveNodes(
-        asof=asof,
+        as_of=as_of,
         dates=[maturity],
         quotes=[0.02],
-        day_count=dc,
+        day_counter=dc,
         quote_kind="flat",
         role="discounting",
     )
     forecast_nodes = CurveNodes(
-        asof=asof,
+        as_of=as_of,
         dates=[maturity],
         quotes=[0.025],
-        day_count=dc,
+        day_counter=dc,
         quote_kind="flat",
         role="forecasting",
     )
@@ -74,30 +53,33 @@ def main() -> None:
 
     notional = 1_000_000
     fixed_leg = FixedLeg(
-        valuation_date=asof,
+        valuation_date=as_of,
+        nominal=notional,
+        currency="EUR",
         issue_date=issue,
         maturity=maturity,
-        currency="EUR",
+        tenor=Period(12, Months),
+        calendar=calendar,
         day_counter=dc,
-        future_schedule=fixed_schedule,
-        nominal=notional,
         rate=0.023,
     )
     float_leg = FloatingLeg(
-        valuation_date=asof,
+        valuation_date=as_of,
+        nominal=notional,
+        currency="EUR",
         issue_date=issue,
         maturity=maturity,
-        currency="EUR",
+        tenor=Period(6, Months),
+        calendar=calendar,
         day_counter=dc,
-        future_schedule=float_schedule,
-        nominal=notional,
+        gearing=1.0,
         spread=0.0,
     )
 
     swap = InterestRateSwap(paying_leg=fixed_leg, receiving_leg=float_leg)
 
-    mtm = swap.mtm(index, discount_nodes)
-    pv01 = swap.pv01(index, discount_nodes)
+    mtm = swap.mark_to_market(discount_nodes=discount_nodes, forecast_index=index)
+    pv01 = swap.ir01_discount(discount_nodes=discount_nodes, forecast_index=index)
     print(f"MTM: {mtm:.2f}")
     print(f"PV01: {pv01:.2f}")
 
