@@ -1,63 +1,47 @@
-name: autofix -> PR (to dev)
+name: autofix on PR -> dev
 
 on:
+  pull_request:
+    branches: [ dev ]     # any PR whose base is dev
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch: {}
-  schedule:
-    - cron: "0 3 * * 1"   # weekly, optional
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: write         # needed to push back to PR branch
+
+concurrency:
+  group: autofix-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   autofix:
-    name: autofix
+    # skip forks; only push to branches in this repo
+    if: >
+      github.event.pull_request.head.repo.full_name == github.repository
+      && github.actor != 'github-actions[bot]'   # avoid running again on our own push
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout PR head branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: true
 
       - uses: astral-sh/setup-uv@v1
+      - run: uv sync
 
-      - name: Install deps
-        run: uv sync
+      - run: uv run ruff check . --fix
+      - run: uv run ruff format . || true
+      - run: uv run black .
 
-      - name: Ruff auto-fix
-        run: uv run ruff check . --fix
-
-      - name: (optional) Ruff format
-        run: uv run ruff format .
-
-      - name: Black format
-        run: uv run black .
-
-      # Re-check after fixes
-      - name: Ruff check
-        run: uv run ruff check .
-
-      - name: Mypy
-        run: uv run mypy src
-
-      - name: Pytest
-        run: uv run pytest -q
-
-      # Open (or update) a PR into dev
-      - name: Create Pull Request
-        id: cpr
-        if: ${{ success() }}
-        uses: peter-evans/create-pull-request@v6
-        with:
-          base: dev                     # <— target integration branch
-          branch: autofix/ruff-black    # PR head branch (in repo)
-          commit-message: "style: autofix (ruff/black)"
-          title: "Autofix: ruff/black"
-          body: "Automated fixes; CI is green."
-          labels: ci, autofix
-          signoff: false
-
-      # Enable auto-merge on that PR (merges itself when required checks pass)
-      - name: Enable auto-merge (squash)
-        if: ${{ steps.cpr.outputs.pull-request-number }}
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Commit & push changes (if any)
         run: |
-          gh pr merge "${{ steps.cpr.outputs.pull-request-number }}" --auto --squash
+          if git diff --quiet; then
+            echo "No formatting changes."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style: autofix (ruff/black)"
+          git push
