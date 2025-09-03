@@ -216,3 +216,41 @@ class CurveNodes:
             quote_kind="discount",
             role=role,
         )
+
+    @classmethod
+    def from_forwards(
+        cls,
+        asof: Date,
+        dates: Sequence[Date],
+        forwards: Sequence[float],
+        day_count: DayCounter,
+        role: CurveRole = "forecasting",
+    ) -> CurveNodes:
+        """Convenience constructor for forward-rate curves."""
+        return cls(
+            asof=asof,
+            dates=dates,
+            quotes=forwards,
+            day_count=day_count,
+            quote_kind="forward",
+            role=role,
+        )
+
+    @classmethod
+    def from_flat(
+        cls,
+        asof: Date,
+        maturity: Date,
+        zero: float,
+        day_count: DayCounter,
+        role: CurveRole = "discounting",
+    ) -> CurveNodes:
+        """Flat zero-rate curve out to ``maturity``."""
+        return cls(
+            asof=asof,
+            dates=[maturity],
+            quotes=[zero],
+            day_count=day_count,
+            quote_kind="flat",
+            role=role,
+        )
