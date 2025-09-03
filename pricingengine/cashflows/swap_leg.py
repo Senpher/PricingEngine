@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
 from typing import Optional
+
+from pandas import DataFrame, option_context
 from QuantLib import (
     Calendar,
     CashFlow,
-    DateGeneration,
     Date,
+    DateGeneration,
     DayCounter,
     FixedRateLeg,
     IborLeg,
@@ -17,14 +20,12 @@ from QuantLib import (
     as_coupon,
     as_floating_rate_coupon,
 )
-from dataclasses import dataclass, replace
-from pandas import DataFrame, option_context
 
 from pricingengine.currencies import CURRENCIES
 
 
 def forward_marching_schedule(
-        start: Date, end: Date, period: Period, calendar: Calendar
+    start: Date, end: Date, period: Period, calendar: Calendar
 ) -> Schedule:
     """
     Returns a forward marching schedule.
@@ -64,7 +65,9 @@ def forward_marching_schedule(
     )
 
 
-def update_dates_in_schedule(schedule: Schedule, new_dates: tuple[Date, ...]) -> Schedule:
+def update_dates_in_schedule(
+    schedule: Schedule, new_dates: tuple[Date, ...]
+) -> Schedule:
     """
     Returns a schedule with `new_dates` and the remaining schedule parameters
     templated from `schedule`.
@@ -171,7 +174,9 @@ class SwapLeg:
         """Returns a nominal values for future payments."""
         corrected_start = self.valuation_date - self.tenor
         return tuple(
-            nominal for nominal, date in zip(self.nominals, self.schedule.dates()) if date > corrected_start
+            nominal
+            for nominal, date in zip(self.nominals, self.schedule.dates())
+            if date > corrected_start
         )
 
 
@@ -202,7 +207,9 @@ class FloatingLeg(SwapLeg):
         """
         idx = forecast_index or self.index
         if idx is None:
-            raise ValueError("FloatingLeg needs an Index (pass forecast_index=... or set leg.index)")
+            raise ValueError(
+                "FloatingLeg needs an Index (pass forecast_index=... or set leg.index)"
+            )
 
         return IborLeg(
             nominals=self.future_nominals[:-1],
@@ -258,7 +265,7 @@ class FixedLeg(SwapLeg):
             self.future_schedule,  # first 4 argument are only exposed positionally
             self.day_counter,
             self.future_nominals[:-1],
-            fixed_rates
+            fixed_rates,
         )
 
     @staticmethod
@@ -332,9 +339,9 @@ class AmortizedSwapLeg(SwapLeg):
         )
 
     @property
-    def nominals(self) -> tuple[float]:
+    def nominals(self) -> tuple[float, ...]:
         """Returns amortized nominal values of the swap-leg for all payment dates."""
-        ns = ()
+        ns: list[float] = []
         for date in self.schedule.dates():
             amortized = sum(
                 self.amortization_amount
@@ -342,13 +349,13 @@ class AmortizedSwapLeg(SwapLeg):
                 if amortization_date <= date
             )
             n = max(0.0, float(self.nominal) - float(amortized))
-            ns += (n,)
-        return ns
+            ns.append(n)
+        return tuple(ns)
 
 
 @dataclass(frozen=True, kw_only=True)
 class AmortizedFloatingLeg(FloatingLeg, AmortizedSwapLeg):
-    """Class that represents a floating leg in a swap contract with amortized nominal."""
+    """Floating leg in a swap contract with amortized nominal."""
 
     pass
 

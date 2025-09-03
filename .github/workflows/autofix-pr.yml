@@ -1,0 +1,31 @@
+name: autofix -> PR
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 3 * * 1"   # weekly, optional
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  autofix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v1
+      - run: uv sync
+      - run: uv run ruff check . --fix
+      - run: uv run ruff format .  # if you use ruff fmt
+      - run: uv run black .
+      - run: uv run ruff check .
+      - run: uv run mypy src
+      - run: uv run pytest -q
+      - name: Create PR
+        if: ${{ success() }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: autofix/ruff-black
+          commit-message: "style: autofix (ruff/black)"
+          title: "Autofix: ruff/black"
+          body: "Automated fixes; CI is green."
+          labels: ci, autofix
+

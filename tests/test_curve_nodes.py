@@ -16,12 +16,12 @@ def test_flat_curve_discount_and_bump() -> None:
         day_counter=dc,
         quote_kind="flat",
     )
-    d = nodes.yts_handle().discount(as_of + ql.Period(5, ql.Years))
+    d = nodes.yts_handle.discount(as_of + ql.Period(5, ql.Years))
     t = dc.yearFraction(as_of, as_of + ql.Period(5, ql.Years))
     assert abs(d - math.exp(-0.02 * t)) < 1e-9
 
     bumped = nodes.bump(1.0)
-    d_b = bumped.yts_handle().discount(as_of + ql.Period(5, ql.Years))
+    d_b = bumped.yts_handle.discount(as_of + ql.Period(5, ql.Years))
     assert abs(d_b - math.exp(-(0.02 + 0.0001) * t)) < 1e-9
 
 
