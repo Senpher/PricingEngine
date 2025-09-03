@@ -6,6 +6,13 @@ build-backend = "setuptools.build_meta"
 name = "pricingengine"
 version = "0.1.0"
 readme = "README.md"
+requires-python = ">=3.11"
 dependencies = [
+    "QuantLib>=1.27",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
 ]
 
