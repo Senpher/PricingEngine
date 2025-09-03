@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from QuantLib import Euribor6M, Index, Months, Period, Simple, USDLibor
 
-from pricingengine.structures.curve_nodes import CurveNodes
+from pricingengine.termstructures.curve_nodes import CurveNodes
 
 
 def make_forecast_index(name: str, forecast_nodes: CurveNodes) -> Index:
@@ -20,10 +20,10 @@ def make_forecast_index(name: str, forecast_nodes: CurveNodes) -> Index:
         # default to Euribor6M when unsure
         index = Euribor6M(handle)
 
-    fixing_date = index.fixingDate(forecast_nodes.asof)
+    fixing_date = index.fixingDate(forecast_nodes.as_of)
     rate = handle.forwardRate(
-        forecast_nodes.asof,
-        forecast_nodes.asof + index.tenor(),
+        forecast_nodes.as_of,
+        forecast_nodes.as_of + index.tenor(),
         index.dayCounter(),
         Simple,
     ).rate()

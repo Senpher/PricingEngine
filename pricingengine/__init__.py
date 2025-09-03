@@ -9,7 +9,7 @@ from .instruments import (
     InterestRateSwap,
     Swaption,
 )
-from .structures import CurveNodes
+from .termstructures import CurveNodes
 
 __all__ = [
     "CurveNodes",

@@ -19,7 +19,7 @@ from QuantLib import (
 
 from pricingengine.instruments._instrument import Instrument
 from pricingengine.instruments.interest_rate_swap import InterestRateSwap
-from pricingengine.structures.curve_nodes import CurveNodes
+from pricingengine.termstructures.curve_nodes import CurveNodes
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
