@@ -1,10 +1,26 @@
 [build-system]
+requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pricingengine"
 version = "0.1.0"
 readme = "README.md"
+requires-python = ">=3.11"
 dependencies = [
+    "QuantLib>=1.27",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "black>=24.0",
+    "mypy>=1.8",
+    "pytest>=7.0",
+    "ruff>=0.1.5",
 ]
 

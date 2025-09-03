@@ -3,20 +3,20 @@ PY = uv run python
 .PHONY: setup format lint test run-example
 
 setup:
-uv venv
-uv sync
+        uv venv
+        uv sync
 
 format:
-uv run black src tests
+        uv run black .
 
 lint:
-uv run ruff check .
-uv run black --check src tests
-uv run mypy src
+        uv run ruff check .
+        uv run black --check .
+        uv run mypy pricingengine
 
 test:
-uv run pytest -q
+        uv run pytest -q
 
 run-example:
-uv run python -m pricingengine.examples.price_irs
+	uv run python -m pricingengine.examples.price_irs
 

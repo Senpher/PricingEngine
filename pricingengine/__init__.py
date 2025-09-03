@@ -1,15 +1,15 @@
 """PricingEngine public API."""
 
-from .structures import CurveNodes
+from .cashflows import FixedLeg, FloatingLeg, SwapLeg
 from .indices import make_forecast_index
-from .cashflows import SwapLeg, FixedLeg, FloatingLeg
 from .instruments import (
+    EquityOption,
+    FXForward,
     Instrument,
     InterestRateSwap,
-    FXForward,
-    EquityOption,
     Swaption,
 )
+from .structures import CurveNodes
 
 __all__ = [
     "CurveNodes",
