@@ -1,0 +1,16 @@
+name: Auto-enable auto-merge on PR -> dev
+on:
+  pull_request:
+    branches: [ dev ]
+    types: [opened, reopened, ready_for_review]
+permissions:
+  pull-requests: write
+
+jobs:
+  enable:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge (squash)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr merge ${{ github.event.pull_request.number }} --auto --squash
