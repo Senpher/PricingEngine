@@ -11,8 +11,10 @@ from QuantLib import (
     EuropeanExercise,
     Index,
     Settlement,
-    Swaption as QLSwaption,
     VanillaSwap,
+)
+from QuantLib import (
+    Swaption as QLSwaption,
 )
 
 from pricingengine.instruments._instrument import Instrument
@@ -50,7 +52,7 @@ class Swaption(Instrument):
     def expiry(self) -> Date:
         return self._expiries()[0]
 
-    def is_expired(self) -> bool:  # type: ignore[override]
+    def is_expired(self) -> bool:  # noqa: D401 - short description
         return self.valuation_date >= self.expiry
 
     # ------------------------------------------------------------------
@@ -134,7 +136,7 @@ class Swaption(Instrument):
         v = self._swaption(forecast_index, discount_nodes).NPV()
         return v if self.is_long else -v
 
-    def mtm(self, forecast_index: Index, discount_nodes: CurveNodes) -> float:  # type: ignore[override]
+    def mtm(self, forecast_index: Index, discount_nodes: CurveNodes) -> float:
         return self.mark_to_market(forecast_index, discount_nodes)
 
     def vega(self, forecast_index: Index, discount_nodes: CurveNodes) -> float:
@@ -171,11 +173,6 @@ class Swaption(Instrument):
         )
         return float(vol)
 
-    def atm_strike(
-        self, forecast_index: Index, discount_nodes: CurveNodes
-    ) -> float:
-        v = self._vanilla_swap_for_pricing(
-            forecast_index, discount_nodes, None
-        )
+    def atm_strike(self, forecast_index: Index, discount_nodes: CurveNodes) -> float:
+        v = self._vanilla_swap_for_pricing(forecast_index, discount_nodes, None)
         return float(v.fairRate())
-

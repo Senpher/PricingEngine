@@ -3,21 +3,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from QuantLib import (
-    Date,
-    SimpleQuote,
-    QuoteHandle,
-    FlatForward,
-    YieldTermStructureHandle,
-    BlackConstantVol,
-    BlackVolTermStructureHandle,
-    BlackScholesMertonProcess,
-    PlainVanillaPayoff,
-    Option,
-    EuropeanExercise,
-    VanillaOption,
-    AnalyticEuropeanEngine,
-    Actual365Fixed,
     TARGET,
+    Actual365Fixed,
+    AnalyticEuropeanEngine,
+    BlackConstantVol,
+    BlackScholesMertonProcess,
+    BlackVolTermStructureHandle,
+    Date,
+    EuropeanExercise,
+    FlatForward,
+    Option,
+    PlainVanillaPayoff,
+    QuoteHandle,
+    SimpleQuote,
+    VanillaOption,
+    YieldTermStructureHandle,
 )
 
 from pricingengine.instruments._instrument import Instrument

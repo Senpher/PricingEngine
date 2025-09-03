@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 from QuantLib import (
     Date,
     DayCounter,
-    Schedule,
     FixedRateLeg,
     IborLeg,
     Index,
+    Schedule,
 )
 
 
@@ -34,7 +34,9 @@ class SwapLeg(ABC):
         return self.valuation_date >= self.maturity
 
     @abstractmethod
-    def cashflows(self, **kwargs):  # pragma: no cover - thin wrapper
+    def cashflows(
+        self, *, forecast_index: Index | None = None, **kwargs
+    ):  # pragma: no cover - thin wrapper
         """Return the QuantLib cashflows for the leg."""
         raise NotImplementedError
 
@@ -43,7 +45,9 @@ class SwapLeg(ABC):
 class FixedLeg(SwapLeg):
     rate: float
 
-    def cashflows(self):
+    def cashflows(
+        self, *, forecast_index: Index | None = None, **kwargs
+    ):  # noqa: ARG002 - unused
         return FixedRateLeg(
             self.future_schedule,
             self.day_counter,
@@ -56,7 +60,9 @@ class FixedLeg(SwapLeg):
 class FloatingLeg(SwapLeg):
     spread: float = 0.0
 
-    def cashflows(self, *, forecast_index: Index | None = None):
+    def cashflows(
+        self, *, forecast_index: Index | None = None, **kwargs
+    ):  # noqa: ARG002 - kwargs unused
         if forecast_index is None:
             raise ValueError("forecast_index is required for floating leg cashflows")
         return IborLeg(
