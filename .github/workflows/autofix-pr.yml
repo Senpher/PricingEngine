@@ -18,8 +18,8 @@ jobs:
     # skip forks; only push to branches in this repo
     if: >
       github.event.pull_request.head.repo.full_name == github.repository
-      && github.actor != 'github-actions[bot]'   # avoid running again on our own push
-    runs-on: ubuntu-latest
+      && github.actor != 'github-actions[bot]'   
+    runs-on: ubuntu-latest 
     steps:
       - name: Checkout PR head branch
         uses: actions/checkout@v4
