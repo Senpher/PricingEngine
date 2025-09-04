@@ -8,14 +8,13 @@ from QuantLib import (
     BermudanExercise,
     BlackSwaptionEngine,
     Date,
+    DiscountingSwapEngine,
     EuropeanExercise,
     Index,
     Settlement,
     VanillaSwap,
 )
-from QuantLib import (
-    Swaption as QLSwaption,
-)
+from QuantLib import Swaption as QLSwaption
 
 from pricingengine.instruments._instrument import Instrument
 from pricingengine.instruments.interest_rate_swap import InterestRateSwap
@@ -83,7 +82,7 @@ class Swaption(Instrument):
         strike: Optional[float],
     ) -> VanillaSwap:
         """Build a :class:`VanillaSwap` for payoff evaluation."""
-        base = self.swap._vanilla_swap_ql(forecast_index, discount_nodes)
+        base = self.swap._vanilla_swap_ql()
         k = base.fairRate() if strike is None else float(strike)
 
         if self.swap.fixed_leg is self.swap.paying_leg:
@@ -102,7 +101,8 @@ class Swaption(Instrument):
             self.swap.floating_leg.spread,
             self.swap.floating_leg.day_counter,
         )
-        v.setPricingEngine(self.swap._discount_engine(discount_nodes))
+        engine = DiscountingSwapEngine(discount_nodes.to_handle())
+        v.setPricingEngine(engine)
         return v
 
     def _engine(self, discount_nodes: CurveNodes):
