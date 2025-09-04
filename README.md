@@ -3,4 +3,4 @@
 
 Financial instrument engine using QuantLib.
 
-Made with love <3
+Made With Love <3
