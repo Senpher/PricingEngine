@@ -10,8 +10,8 @@ from QuantLib import (
     Date,
     EuropeanExercise,
     QuoteHandle,
-    SimpleQuote,
     Settlement,
+    SimpleQuote,
     VanillaSwap,
 )
 from QuantLib import Swaption as QLSwaption

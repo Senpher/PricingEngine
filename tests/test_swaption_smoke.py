@@ -2,8 +2,8 @@ import QuantLib as ql
 
 from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg
 from pricingengine.indices.index_utils import make_forecast_index
-from pricingengine.irs import InterestRateSwap
 from pricingengine.instruments import Swaption
+from pricingengine.irs import InterestRateSwap
 from pricingengine.termstructures.curve_nodes import CurveNodes
 
 
