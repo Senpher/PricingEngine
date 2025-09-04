@@ -167,12 +167,12 @@ class CurveNodes:
     # convenience alternate constructors
     @classmethod
     def from_zeros(
-            cls,
-            as_of: Date,
-            dates: Sequence[Date],
-            zeros: Sequence[float],
-            day_counter: DayCounter,
-            role: CurveRole = "discounting",
+        cls,
+        as_of: Date,
+        dates: Sequence[Date],
+        zeros: Sequence[float],
+        day_counter: DayCounter,
+        role: CurveRole = "discounting",
     ) -> CurveNodes:
         return cls(
             as_of=as_of,
@@ -185,12 +185,12 @@ class CurveNodes:
 
     @classmethod
     def from_discounts(
-            cls,
-            as_of: Date,
-            dates: Sequence[Date],
-            discounts: Sequence[float],
-            day_counter: DayCounter,
-            role: CurveRole = "discounting",
+        cls,
+        as_of: Date,
+        dates: Sequence[Date],
+        discounts: Sequence[float],
+        day_counter: DayCounter,
+        role: CurveRole = "discounting",
     ) -> CurveNodes:
         return cls(
             as_of=as_of,
@@ -203,12 +203,12 @@ class CurveNodes:
 
     @classmethod
     def from_forwards(
-            cls,
-            as_of: Date,
-            dates: Sequence[Date],
-            forwards: Sequence[float],
-            day_counter: DayCounter,
-            role: CurveRole = "forecasting",
+        cls,
+        as_of: Date,
+        dates: Sequence[Date],
+        forwards: Sequence[float],
+        day_counter: DayCounter,
+        role: CurveRole = "forecasting",
     ) -> CurveNodes:
         """Convenience constructor for forward-rate curves."""
         return cls(
@@ -222,12 +222,12 @@ class CurveNodes:
 
     @classmethod
     def from_flat(
-            cls,
-            as_of: Date,
-            maturity: Date,
-            zero: float,
-            day_counter: DayCounter,
-            role: CurveRole = "discounting",
+        cls,
+        as_of: Date,
+        maturity: Date,
+        zero: float,
+        day_counter: DayCounter,
+        role: CurveRole = "discounting",
     ) -> CurveNodes:
         """Flat zero-rate curve out to ``maturity``."""
         return cls(

@@ -76,10 +76,10 @@ class Swaption(Instrument):
         )
 
     def _vanilla_swap_for_pricing(
-            self,
-            forecast_index: Index,
-            discount_nodes: CurveNodes,
-            strike: Optional[float],
+        self,
+        forecast_index: Index,
+        discount_nodes: CurveNodes,
+        strike: Optional[float],
     ) -> VanillaSwap:
         """Build a :class:`VanillaSwap` for payoff evaluation."""
         base = self.swap._vanilla_swap_ql()
@@ -117,7 +117,7 @@ class Swaption(Instrument):
         raise ValueError("vol_type must be 'black' or 'normal'")
 
     def _swaption(
-            self, forecast_index: Index, discount_nodes: CurveNodes
+        self, forecast_index: Index, discount_nodes: CurveNodes
     ) -> QLSwaption:
         vanilla = self._vanilla_swap_for_pricing(
             forecast_index, discount_nodes, self.strike
@@ -129,7 +129,7 @@ class Swaption(Instrument):
     # ------------------------------------------------------------------
     # analytics
     def mark_to_market(
-            self, forecast_index: Index, discount_nodes: CurveNodes
+        self, forecast_index: Index, discount_nodes: CurveNodes
     ) -> float:
         if self.is_expired():
             return 0.0
@@ -146,15 +146,15 @@ class Swaption(Instrument):
         return v if self.is_long else -v
 
     def implied_volatility(
-            self,
-            target_npv: float,
-            forecast_index: Index,
-            discount_nodes: CurveNodes,
-            *,
-            accuracy: float = 1e-7,
-            max_evaluations: int = 500,
-            min_vol: float = 1e-6,
-            max_vol: float = 5.0,
+        self,
+        target_npv: float,
+        forecast_index: Index,
+        discount_nodes: CurveNodes,
+        *,
+        accuracy: float = 1e-7,
+        max_evaluations: int = 500,
+        min_vol: float = 1e-6,
+        max_vol: float = 5.0,
     ) -> float:
         if self.is_expired():
             return 0.0

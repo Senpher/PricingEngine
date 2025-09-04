@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import cast
 
+from pandas import DataFrame, option_context
 from QuantLib import (
     Calendar,
     CashFlow,
@@ -20,7 +21,6 @@ from QuantLib import (
     as_coupon,
     as_floating_rate_coupon,
 )
-from pandas import DataFrame, option_context
 
 from pricingengine.currencies import CURRENCIES
 
