@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import Type, cast
 
-from pandas import DataFrame, merge, option_context
 from QuantLib import (
     Annual,
     Continuous,
@@ -16,6 +15,7 @@ from QuantLib import (
     YieldTermStructureHandle,
     ZeroSpreadedTermStructure,
 )
+from pandas import DataFrame, merge, option_context
 
 from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg, SwapLeg
 from pricingengine.instruments._instrument import Instrument
