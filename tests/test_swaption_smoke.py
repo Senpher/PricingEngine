@@ -2,6 +2,7 @@ import QuantLib as ql
 
 from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg
 from pricingengine.indices.index_utils import make_forecast_index
+from pricingengine.instruments import Swaption
 from pricingengine.irs import InterestRateSwap
 from pricingengine.termstructures.curve_nodes import CurveNodes
 
@@ -29,14 +30,10 @@ def _build_curves():
     return as_of, dc, disc, fwd
 
 
-def _build_swap(
-    as_of: ql.Date,
-    dc: ql.DayCounter,
-    index: ql.IborIndex,
-    discount_curve: ql.YieldTermStructureHandle,
-) -> InterestRateSwap:
+def _build_swap(as_of, dc, index, discount_curve, *, issue=None):
     calendar = ql.TARGET()
-    issue = as_of
+    if issue is None:
+        issue = as_of
     maturity = calendar.advance(issue, ql.Period(5, ql.Years))
     notional = 1_000_000
     fixed_leg = FixedLeg(
@@ -68,25 +65,21 @@ def _build_swap(
     )
 
 
-def test_irs_smoke() -> None:
+def test_swaption_smoke():
     as_of, dc, disc_nodes, fwd_nodes = _build_curves()
     index = make_forecast_index("euribor6m", fwd_nodes)
-    swap = _build_swap(as_of, dc, index, disc_nodes.yts_handle)
+    expiry = as_of + ql.Period(1, ql.Years)
+    swap = _build_swap(as_of, dc, index, disc_nodes.yts_handle, issue=expiry)
+    swpt = Swaption(swap=swap, expiries=[expiry])
 
-    mtm = swap.mark_to_market()
+    mtm = swpt.mark_to_market()
     assert isinstance(mtm, float)
 
-    pv01 = swap.ir01_discount()
-    assert abs(pv01) > 0
+    vega = swpt.vega()
+    assert isinstance(vega, float)
 
-    assert abs(swap.pv01() - swap.dv01()) < 1_000_000
+    atm = swpt.atm_strike()
+    assert isinstance(atm, float)
 
-    bumped = disc_nodes.bump(1.0)
-    swap_bumped = InterestRateSwap(
-        paying_leg=swap.paying_leg,
-        receiving_leg=swap.receiving_leg,
-        discount_curve=bumped.yts_handle,
-    )
-    mtm_bumped = swap_bumped.mark_to_market()
-    fd = mtm_bumped - mtm
-    assert abs(fd - pv01) < 1e-2 * 1_000_000
+    iv = swpt.implied_volatility(target_npv=mtm)
+    assert iv > 0

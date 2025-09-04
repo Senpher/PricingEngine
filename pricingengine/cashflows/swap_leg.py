@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Optional
+from functools import cached_property
+from typing import cast
 
 from pandas import DataFrame, option_context
 from QuantLib import (
@@ -11,8 +12,8 @@ from QuantLib import (
     DateGeneration,
     DayCounter,
     FixedRateLeg,
+    IborIndex,
     IborLeg,
-    Index,
     ModifiedFollowing,
     Period,
     Preceding,
@@ -23,64 +24,11 @@ from QuantLib import (
 
 from pricingengine.currencies import CURRENCIES
 
-
-def forward_marching_schedule(
-    start: Date, end: Date, period: Period, calendar: Calendar
-) -> Schedule:
-    """
-    Returns a forward marching schedule.
-
-    Dates in the schedule are gives as
-
-              D1    D2    D3        DL
-    start ... | ... | ... | ... ... | ... end
-
-    where dates D1, D2, D3 through DL are located on `period` distance from
-    each other.
-
-    Notable function behaviour:
-
-    - when `end` - `start` <= `period` there are only two dates in the
-      schedule
-
-    - when (`end` - `start`) / `period` is not divisible in which case `end` -
-      DL is smaller than `period` (i.e., schedule is not equidistant)
-
-    - when a payment date coincides with a holiday in the calendar the payment
-      date is moved on the following business date
-    """
-    CONVENTION = ModifiedFollowing
-    TERMINATION_CONVENTION = Preceding
-    RULE = DateGeneration.Forward
-    END_OF_MONTH = False
-    return Schedule(
-        start,
-        end,
-        period,
-        calendar,
-        CONVENTION,
-        TERMINATION_CONVENTION,
-        RULE,
-        END_OF_MONTH,
-    )
-
-
-def update_dates_in_schedule(
-    schedule: Schedule, new_dates: tuple[Date, ...]
-) -> Schedule:
-    """
-    Returns a schedule with `new_dates` and the remaining schedule parameters
-    templated from `schedule`.
-    """
-    return Schedule(
-        new_dates,
-        schedule.calendar(),
-        schedule.businessDayConvention(),
-        schedule.businessDayConvention(),
-        schedule.tenor(),
-        schedule.rule(),
-        schedule.endOfMonth(),
-    )
+# Standard schedule construction parameters used across legs
+_CONVENTION = ModifiedFollowing
+_TERMINATION_CONVENTION = Preceding
+_RULE = DateGeneration.Forward
+_END_OF_MONTH = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -124,17 +72,21 @@ class SwapLeg:
                 "'currency' is not supported in QuantLib - unable to create index"
             )
 
-    @property
+    @cached_property
     def schedule(self) -> Schedule:
         """Returns a schedule with all payment dates according to swap-leg settings."""
-        return forward_marching_schedule(
-            start=self.issue_date,
-            end=self.maturity,
-            period=self.tenor,
-            calendar=self.calendar,
+        return Schedule(
+            self.issue_date,
+            self.maturity,
+            self.tenor,
+            self.calendar,
+            _CONVENTION,
+            _TERMINATION_CONVENTION,
+            _RULE,
+            _END_OF_MONTH,
         )
 
-    @property
+    @cached_property
     def future_schedule(self) -> Schedule:
         """
         Returns a schedule with dates for future payments.
@@ -160,9 +112,17 @@ class SwapLeg:
         the former example, `future_schedule` is shorter than `schedule` and in
         the latter `future_schedule` is the same length as `schedule`.
         """
-        corrected_start = self.valuation_date - self.tenor
-        dates = tuple(date for date in self.schedule.dates() if date > corrected_start)
-        return update_dates_in_schedule(self.schedule, dates)
+        cutoff = self.valuation_date - self.tenor
+        dates = [d for d in self.schedule.dates() if d > cutoff]
+        return Schedule(
+            dates,
+            self.calendar,
+            _CONVENTION,
+            _CONVENTION,
+            self.tenor,
+            _RULE,
+            _END_OF_MONTH,
+        )
 
     @property
     def nominals(self) -> tuple[float, ...]:
@@ -172,11 +132,11 @@ class SwapLeg:
     @property
     def future_nominals(self) -> tuple[float, ...]:
         """Returns a nominal values for future payments."""
-        corrected_start = self.valuation_date - self.tenor
+        cutoff_sn = (self.valuation_date - self.tenor).serialNumber()
         return tuple(
-            nominal
-            for nominal, date in zip(self.nominals, self.schedule.dates())
-            if date > corrected_start
+            n
+            for n, d in zip(self.nominals, self.schedule.dates())
+            if d.serialNumber() > cutoff_sn
         )
 
 
@@ -184,14 +144,25 @@ class SwapLeg:
 class FloatingLeg(SwapLeg):
     """Class that represents a floating leg in a swap contract with fixed nominal."""
 
-    index: Optional[Index] = None
+    index: IborIndex
     gearing: float
     spread: float
 
-    def with_index(self, index: Index) -> FloatingLeg:
+    def __post_init__(self):
+        super().__post_init__()
+        # Minimal sanity checks (don’t enforce tenor equality too aggressively—
+        # users may want stubs)
+        if self.gearing == 0.0:
+            raise ValueError("gearing must be non-zero for floating leg")
+
+    # To use to create a new leg with new index
+    # DO NOT MODIFY INDEX ATTRIBUTE AFTER CREATION
+    # Else cached cashflows won't be bound to the updated index if you do
+    def with_index(self, index: IborIndex) -> FloatingLeg:
         return replace(self, index=index)
 
-    def cashflows(self, forecast_index: Optional[Index] = None) -> tuple[CashFlow]:
+    @cached_property
+    def cashflows(self) -> tuple[CashFlow]:
         """
         Returns future cash flow payments for variable interest rate.
 
@@ -205,20 +176,19 @@ class FloatingLeg(SwapLeg):
         that forward rates in `forecast_index` are applied on cash flows on T +
         index settlement period. OIS indices settle on the same day.
         """
-        idx = forecast_index or self.index
-        if idx is None:
-            raise ValueError(
-                "FloatingLeg needs an Index (pass forecast_index=... or set leg.index)"
-            )
-
+        sch = self.future_schedule
+        dates = sch.dates()
+        n = len(dates) - 1
+        if n <= 0:
+            return cast(tuple[CashFlow, ...], tuple())
         return IborLeg(
             nominals=self.future_nominals[:-1],
-            schedule=self.future_schedule,
-            index=idx,
+            schedule=sch,
+            index=self.index,
             paymentDayCounter=self.day_counter,
             paymentConvention=ModifiedFollowing,
-            gearings=tuple(self.gearing for _ in self.future_schedule.dates()[:-1]),
-            spreads=tuple(self.spread for _ in self.future_schedule.dates()[:-1]),
+            gearings=(self.gearing,) * n,
+            spreads=(self.spread,) * n,
         )
 
     @staticmethod
@@ -258,14 +228,20 @@ class FixedLeg(SwapLeg):
 
     rate: float
 
+    @cached_property
     def cashflows(self) -> tuple[CashFlow]:
         """Returns future cash flow payments for fixed interest rate."""
-        fixed_rates = tuple(self.rate for _ in self.future_schedule.dates())
+        sch = self.future_schedule
+        n = len(sch.dates()) - 1
+        if n <= 0:
+            return cast(tuple[CashFlow, ...], tuple())
+        rates = (self.rate,) * n
+        # first 4 argument are only exposed positionally
         return FixedRateLeg(
-            self.future_schedule,  # first 4 argument are only exposed positionally
+            sch,
             self.day_counter,
             self.future_nominals[:-1],
-            fixed_rates,
+            rates,
         )
 
     @staticmethod
@@ -331,11 +307,15 @@ class AmortizedSwapLeg(SwapLeg):
         Returns a schedule with all amortization dates according to the
         swap-leg settings.
         """
-        return forward_marching_schedule(
-            start=self.amortization_first_date,
-            end=self.amortization_last_date,
-            period=self.amortization_period,
-            calendar=self.calendar,
+        return Schedule(
+            self.amortization_first_date,
+            self.amortization_last_date,
+            self.amortization_period,
+            self.calendar,
+            _CONVENTION,
+            _TERMINATION_CONVENTION,
+            _RULE,
+            _END_OF_MONTH,
         )
 
     @property
@@ -362,6 +342,6 @@ class AmortizedFloatingLeg(FloatingLeg, AmortizedSwapLeg):
 
 @dataclass(frozen=True, kw_only=True)
 class AmortizedFixedLeg(FixedLeg, AmortizedSwapLeg):
-    """Class that represents a fixed leg in a swap contract with amortized nominal."""
+    """Fixed leg in a swap contract with amortized nominal."""
 
     pass

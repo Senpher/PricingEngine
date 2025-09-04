@@ -61,7 +61,10 @@ class CurveNodes:
 
     @cached_property
     def yts_handle(self) -> YieldTermStructureHandle:
-        """Build and cache a QuantLib YieldTermStructureHandle for these nodes."""
+        """
+        Build once and cache a QuantLib YieldTermStructureHandle for these nodes.
+        Subsequent accesses reuse the same handle. (No relinking here.)
+        """
         if self.quote_kind == "zero":
             if len(self.quotes) == 1:
                 yts = FlatForward(

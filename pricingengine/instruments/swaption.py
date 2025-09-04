@@ -9,17 +9,15 @@ from QuantLib import (
     BlackSwaptionEngine,
     Date,
     EuropeanExercise,
-    Index,
+    QuoteHandle,
     Settlement,
+    SimpleQuote,
     VanillaSwap,
 )
-from QuantLib import (
-    Swaption as QLSwaption,
-)
+from QuantLib import Swaption as QLSwaption
 
 from pricingengine.instruments._instrument import Instrument
 from pricingengine.instruments.interest_rate_swap import InterestRateSwap
-from pricingengine.termstructures.curve_nodes import CurveNodes
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -78,12 +76,10 @@ class Swaption(Instrument):
 
     def _vanilla_swap_for_pricing(
         self,
-        forecast_index: Index,
-        discount_nodes: CurveNodes,
         strike: Optional[float],
     ) -> VanillaSwap:
         """Build a :class:`VanillaSwap` for payoff evaluation."""
-        base = self.swap._vanilla_swap_ql(forecast_index, discount_nodes)
+        base = self.swap._vanilla_swap_ql()
         k = base.fairRate() if strike is None else float(strike)
 
         if self.swap.fixed_leg is self.swap.paying_leg:
@@ -98,58 +94,51 @@ class Swaption(Instrument):
             k,
             self.swap.fixed_leg.day_counter,
             self.swap.floating_leg.future_schedule,
-            forecast_index,
+            self.swap.floating_leg.index,
             self.swap.floating_leg.spread,
             self.swap.floating_leg.day_counter,
         )
-        v.setPricingEngine(self.swap._discount_engine(discount_nodes))
+        v.setPricingEngine(self.swap.discount_engine)
         return v
 
-    def _engine(self, discount_nodes: CurveNodes):
+    def _engine(self):
         dc = self.swap.fixed_leg.day_counter
-        handle = discount_nodes.to_handle()
+        handle = self.swap.discount_curve
         vt = self.volatility
         t = self.vol_type.lower()
+        vol = QuoteHandle(SimpleQuote(float(vt)))
         if t == "black":
-            return BlackSwaptionEngine(handle, float(vt), dc)
+            return BlackSwaptionEngine(handle, vol, dc)
         if t in ("normal", "bachelier"):
-            return BachelierSwaptionEngine(handle, float(vt), dc)
+            return BachelierSwaptionEngine(handle, vol, dc)
         raise ValueError("vol_type must be 'black' or 'normal'")
 
-    def _swaption(
-        self, forecast_index: Index, discount_nodes: CurveNodes
-    ) -> QLSwaption:
-        vanilla = self._vanilla_swap_for_pricing(
-            forecast_index, discount_nodes, self.strike
-        )
+    def _swaption(self) -> QLSwaption:
+        vanilla = self._vanilla_swap_for_pricing(self.strike)
         swpt = QLSwaption(vanilla, self._exercise(), self._settlement())
-        swpt.setPricingEngine(self._engine(discount_nodes))
+        swpt.setPricingEngine(self._engine())
         return swpt
 
     # ------------------------------------------------------------------
     # analytics
-    def mark_to_market(
-        self, forecast_index: Index, discount_nodes: CurveNodes
-    ) -> float:
+    def mark_to_market(self) -> float:
         if self.is_expired():
             return 0.0
-        v = self._swaption(forecast_index, discount_nodes).NPV()
+        v = self._swaption().NPV()
         return v if self.is_long else -v
 
-    def mtm(self, forecast_index: Index, discount_nodes: CurveNodes) -> float:
-        return self.mark_to_market(forecast_index, discount_nodes)
+    def mtm(self) -> float:
+        return self.mark_to_market()
 
-    def vega(self, forecast_index: Index, discount_nodes: CurveNodes) -> float:
+    def vega(self) -> float:
         if self.is_expired():
             return 0.0
-        v = self._swaption(forecast_index, discount_nodes).vega()
+        v = self._swaption().vega()
         return v if self.is_long else -v
 
     def implied_volatility(
         self,
         target_npv: float,
-        forecast_index: Index,
-        discount_nodes: CurveNodes,
         *,
         accuracy: float = 1e-7,
         max_evaluations: int = 500,
@@ -158,14 +147,13 @@ class Swaption(Instrument):
     ) -> float:
         if self.is_expired():
             return 0.0
-        swpt = self._swaption(forecast_index, discount_nodes)
-        engine = self._engine(discount_nodes)
+        swpt = self._swaption()
+        engine = self._engine()
         swpt.setPricingEngine(engine)
-        dc = self.swap.fixed_leg.day_counter
         vol = swpt.impliedVolatility(
             float(target_npv),
-            discount_nodes.to_handle(),
-            dc,
+            self.swap.discount_curve,
+            float(self.volatility),
             accuracy,
             max_evaluations,
             min_vol,
@@ -173,6 +161,6 @@ class Swaption(Instrument):
         )
         return float(vol)
 
-    def atm_strike(self, forecast_index: Index, discount_nodes: CurveNodes) -> float:
-        v = self._vanilla_swap_for_pricing(forecast_index, discount_nodes, None)
+    def atm_strike(self) -> float:
+        v = self._vanilla_swap_for_pricing(None)
         return float(v.fairRate())
