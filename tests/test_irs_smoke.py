@@ -29,7 +29,12 @@ def _build_curves():
     return as_of, dc, disc, fwd
 
 
-def _build_swap(as_of: ql.Date, dc: ql.DayCounter) -> InterestRateSwap:
+def _build_swap(
+    as_of: ql.Date,
+    dc: ql.DayCounter,
+    index: ql.IborIndex,
+    discount_curve: ql.YieldTermStructureHandle,
+) -> InterestRateSwap:
     calendar = ql.TARGET()
     issue = as_of
     maturity = calendar.advance(issue, ql.Period(5, ql.Years))
@@ -54,32 +59,34 @@ def _build_swap(as_of: ql.Date, dc: ql.DayCounter) -> InterestRateSwap:
         tenor=ql.Period(ql.Semiannual),
         calendar=calendar,
         day_counter=dc,
+        index=index,
         gearing=1.0,
         spread=0.0,
     )
-    return InterestRateSwap(paying_leg=fixed_leg, receiving_leg=float_leg)
+    return InterestRateSwap(
+        paying_leg=fixed_leg, receiving_leg=float_leg, discount_curve=discount_curve
+    )
 
 
 def test_irs_smoke() -> None:
     as_of, dc, disc_nodes, fwd_nodes = _build_curves()
     index = make_forecast_index("euribor6m", fwd_nodes)
-    swap = _build_swap(as_of, dc)
+    swap = _build_swap(as_of, dc, index, disc_nodes.yts_handle)
 
-    mtm = swap.mark_to_market(discount_nodes=disc_nodes, forecast_index=index)
+    mtm = swap.mark_to_market()
     assert isinstance(mtm, float)
 
-    pv01 = swap.ir01_discount(discount_nodes=disc_nodes, forecast_index=index)
+    pv01 = swap.ir01_discount()
     assert abs(pv01) > 0
 
-    assert (
-        abs(
-            swap.pv01(discount_nodes=disc_nodes, forecast_index=index)
-            - swap.dv01(discount_nodes=disc_nodes, forecast_index=index)
-        )
-        < 1_000_000
-    )
+    assert abs(swap.pv01() - swap.dv01()) < 1_000_000
 
     bumped = disc_nodes.bump(1.0)
-    mtm_bumped = swap.mark_to_market(discount_nodes=bumped, forecast_index=index)
+    swap_bumped = InterestRateSwap(
+        paying_leg=swap.paying_leg,
+        receiving_leg=swap.receiving_leg,
+        discount_curve=bumped.yts_handle,
+    )
+    mtm_bumped = swap_bumped.mark_to_market()
     fd = mtm_bumped - mtm
     assert abs(fd - pv01) < 1e-2 * 1_000_000

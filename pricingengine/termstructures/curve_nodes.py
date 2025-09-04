@@ -1,20 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import cached_property
-from math import exp, log
-from typing import Literal, Sequence
+from math import log, exp
+from typing import Sequence, Literal, Optional
 
 from QuantLib import (
     Date,
     DayCounter,
-    DiscountCurve,
-    FlatForward,
-    ForwardCurve,
-    QuoteHandle,
-    SimpleQuote,
     YieldTermStructureHandle,
     ZeroCurve,
+    DiscountCurve,
+    ForwardCurve,
+    FlatForward,
+    QuoteHandle,
+    SimpleQuote,
 )
 
 QuoteKind = Literal["zero", "discount", "forward", "flat"]
@@ -61,7 +61,10 @@ class CurveNodes:
 
     @cached_property
     def yts_handle(self) -> YieldTermStructureHandle:
-        """Build and cache a QuantLib YieldTermStructureHandle for these nodes."""
+        """
+        Build once and cache a QuantLib YieldTermStructureHandle for these nodes.
+        Subsequent accesses reuse the same handle. (No relinking here.)
+        """
         if self.quote_kind == "zero":
             if len(self.quotes) == 1:
                 yts = FlatForward(
