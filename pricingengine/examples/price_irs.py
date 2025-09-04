@@ -61,21 +61,26 @@ def main() -> None:
         tenor=Period(6, Months),
         calendar=calendar,
         day_counter=dc,
+        index=index,
         gearing=1.0,
         spread=0.0,
     )
 
-    swap = InterestRateSwap(paying_leg=fixed_leg, receiving_leg=float_leg)
+    swap = InterestRateSwap(
+        paying_leg=fixed_leg,
+        receiving_leg=float_leg,
+        discount_curve=discount_nodes.yts_handle,
+    )
 
-    mtm = swap.mark_to_market(discount_nodes=discount_nodes, forecast_index=index)
-    pv01 = swap.ir01_discount(discount_nodes=discount_nodes, forecast_index=index)
+    mtm = swap.mark_to_market()
+    pv01 = swap.ir01_discount()
     print(f"MTM: {mtm:.2f}")
     print(f"PV01: {pv01:.2f}")
 
     rows = []
-    for cf in fixed_leg.cashflows():
+    for cf in fixed_leg.cashflows:
         rows.append({"leg": "fixed", "date": cf.date(), "amount": cf.amount()})
-    for cf in float_leg.cashflows(forecast_index=index):
+    for cf in float_leg.cashflows:
         rows.append({"leg": "float", "date": cf.date(), "amount": cf.amount()})
     df = pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
     print(df.head())
