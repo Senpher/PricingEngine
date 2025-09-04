@@ -1,20 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from functools import cached_property
-from math import log, exp
-from typing import Sequence, Literal, Optional
+from math import exp, log
+from typing import Literal, Sequence
 
 from QuantLib import (
     Date,
     DayCounter,
-    YieldTermStructureHandle,
-    ZeroCurve,
     DiscountCurve,
-    ForwardCurve,
     FlatForward,
+    ForwardCurve,
     QuoteHandle,
     SimpleQuote,
+    YieldTermStructureHandle,
+    ZeroCurve,
 )
 
 QuoteKind = Literal["zero", "discount", "forward", "flat"]
