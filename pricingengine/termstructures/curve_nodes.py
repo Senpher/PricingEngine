@@ -93,9 +93,7 @@ class CurveNodes:
         elif self.quote_kind == "flat":
             if len(self.quotes) != 1:
                 raise ValueError("quote_kind='flat' expects exactly one zero rate")
-            yts = FlatForward(
-                self.as_of, QuoteHandle(SimpleQuote(self.quotes[0])), self.day_counter
-            )
+            yts = FlatForward(self.as_of, QuoteHandle(SimpleQuote(self.quotes[0])), self.day_counter)
 
         else:
             raise ValueError(f"Unsupported quote_kind: {self.quote_kind}")

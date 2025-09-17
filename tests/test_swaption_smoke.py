@@ -60,9 +60,7 @@ def _build_swap(as_of, dc, index, discount_curve, *, issue=None):
         gearing=1.0,
         spread=0.0,
     )
-    return InterestRateSwap(
-        paying_leg=fixed_leg, receiving_leg=float_leg, discount_curve=discount_curve
-    )
+    return InterestRateSwap(paying_leg=fixed_leg, receiving_leg=float_leg, discount_curve=discount_curve)
 
 
 def test_swaption_smoke():
@@ -79,9 +77,7 @@ def test_swaption_smoke():
             dc,
         )
     )
-    swpt = Swaption(
-        swap=swap, expiries=[expiry], vol_surface=vol_surface, vol_model="black"
-    )
+    swpt = Swaption(swap=swap, expiries=[expiry], vol_surface=vol_surface, vol_model="black")
 
     mtm = swpt.mark_to_market()
     assert isinstance(mtm, float)

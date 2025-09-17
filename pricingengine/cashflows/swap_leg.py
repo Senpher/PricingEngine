@@ -25,9 +25,7 @@ from pandas import DataFrame, option_context
 from pricingengine.currencies import CURRENCIES
 
 
-def forward_marching_schedule(
-    start: Date, end: Date, period: Period, calendar: Calendar
-) -> Schedule:
+def forward_marching_schedule(start: Date, end: Date, period: Period, calendar: Calendar) -> Schedule:
     """
     Returns a forward marching schedule.
 
@@ -66,9 +64,7 @@ def forward_marching_schedule(
     )
 
 
-def update_dates_in_schedule(
-    schedule: Schedule, new_dates: tuple[Date, ...]
-) -> Schedule:
+def update_dates_in_schedule(schedule: Schedule, new_dates: tuple[Date, ...]) -> Schedule:
     """
     Returns a schedule with `new_dates` and the remaining schedule parameters
     templated from `schedule`.
@@ -121,9 +117,7 @@ class SwapLeg:
             raise ValueError("'nominal' must be positive")
 
         if self.currency not in CURRENCIES:
-            raise ValueError(
-                "'currency' is not supported in QuantLib - unable to create index"
-            )
+            raise ValueError("'currency' is not supported in QuantLib - unable to create index")
         # ``valuation_date`` is accepted for backward compatibility with
         # earlier APIs that required it at construction time. The new
         # implementation sources the valuation date directly from
@@ -198,11 +192,7 @@ class SwapLeg:
     def future_nominals(self) -> tuple[float, ...]:
         """Returns a nominal values for future payments."""
         cutoff = self.valuation_date - self.tenor
-        return tuple(
-            nominal
-            for nominal, date in zip(self.nominals, self.schedule.dates())
-            if date > cutoff
-        )
+        return tuple(nominal for nominal, date in zip(self.nominals, self.schedule.dates()) if date > cutoff)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -356,9 +346,7 @@ class AmortizedSwapLeg(SwapLeg):
     def __post_init__(self, valuation_date: Date | None):
         super().__post_init__(valuation_date)
         if not all(nominal >= 0 for nominal in self.nominals):
-            raise ValueError(
-                "Amortized swap leg cannot produce negative cashflow nominals."
-            )
+            raise ValueError("Amortized swap leg cannot produce negative cashflow nominals.")
 
     @property
     def amortization_schedule(self) -> Schedule:

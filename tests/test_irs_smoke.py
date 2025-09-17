@@ -63,9 +63,7 @@ def _build_swap(
         gearing=1.0,
         spread=0.0,
     )
-    return InterestRateSwap(
-        paying_leg=fixed_leg, receiving_leg=float_leg, discount_curve=discount_curve
-    )
+    return InterestRateSwap(paying_leg=fixed_leg, receiving_leg=float_leg, discount_curve=discount_curve)
 
 
 def test_irs_smoke() -> None:
