@@ -10,8 +10,8 @@ class Instrument(ABC):
         pass
 
     @abstractmethod
-    def mark_to_market(self, *args, **kwargs) -> R:
+    def mark_to_market(self, *args, **kwargs) -> float | None:
         if self.is_expired:
             return 0.0
         else:
-            pass
+            return None

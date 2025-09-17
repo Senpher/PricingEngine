@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace, InitVar
+from dataclasses import dataclass, replace
 from functools import cached_property
 
 from QuantLib import (
@@ -117,19 +117,13 @@ class SwapLeg:
 
         if self.currency not in CURRENCIES:
             raise ValueError("'currency' is not supported in QuantLib - unable to create index")
-        # ``valuation_date`` is accepted for backward compatibility with
-        # earlier APIs that required it at construction time. The new
-        # implementation sources the valuation date directly from
-        # QuantLib's global Settings, so the argument is intentionally
-        # ignored (aside from being accepted so existing callers keep
-        # working).
 
     @property
     def valuation_date(self) -> Date:
         # Always reflect the current global eval date
         return Settings.instance().evaluationDate
 
-    @property
+    @cached_property
     def schedule(self) -> Schedule:
         """Returns a schedule with all payment dates according to swap-leg settings."""
         return Schedule(
@@ -143,7 +137,7 @@ class SwapLeg:
             False,
         )
 
-    @property
+    @cached_property
     def future_schedule(self) -> Schedule:
         """
         Returns a schedule with dates for future payments.
@@ -202,8 +196,8 @@ class FloatingLeg(SwapLeg):
     gearing: float
     spread: float
 
-    def __post_init__(self, valuation_date: Date | None):
-        super().__post_init__(valuation_date)
+    def __post_init__(self):
+        super().__post_init__()
         # Minimal sanity checks (don’t enforce tenor equality too aggressively—users may want stubs)
         if self.gearing == 0.0:
             raise ValueError("gearing must be non-zero for floating leg")
@@ -342,8 +336,8 @@ class AmortizedSwapLeg(SwapLeg):
     amortization_first_date: Date
     amortization_last_date: Date
 
-    def __post_init__(self, valuation_date: Date | None):
-        super().__post_init__(valuation_date)
+    def __post_init__(self):
+        super().__post_init__()
         if not all(nominal >= 0 for nominal in self.nominals):
             raise ValueError("Amortized swap leg cannot produce negative cashflow nominals.")
 
