@@ -103,7 +103,6 @@ class SwapLeg:
     using QuantLib.
     """
 
-    valuation_date: InitVar[Date | None] = None
     nominal: float
     currency: str
     issue_date: Date
@@ -112,7 +111,7 @@ class SwapLeg:
     calendar: Calendar
     day_counter: DayCounter
 
-    def __post_init__(self, valuation_date: Date | None):
+    def __post_init__(self):
         if self.nominal < 0:
             raise ValueError("'nominal' must be positive")
 
