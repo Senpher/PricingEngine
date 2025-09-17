@@ -2,20 +2,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from functools import cached_property
-from math import exp, log
-from typing import Literal, Sequence
+from typing import Sequence, Literal
 
 from QuantLib import (
     Date,
     DayCounter,
-    DiscountCurve,
-    FlatForward,
-    ForwardCurve,
-    QuoteHandle,
-    SimpleQuote,
     YieldTermStructureHandle,
     ZeroCurve,
+    DiscountCurve,
+    ForwardCurve,
+    FlatForward,
+    QuoteHandle,
+    SimpleQuote,
 )
+from math import log, exp
 
 QuoteKind = Literal["zero", "discount", "forward", "flat"]
 CurveRole = Literal["discounting", "forecasting", "other"]
@@ -74,6 +74,7 @@ class CurveNodes:
                 )
             else:
                 yts = ZeroCurve(self.dates, self.quotes, self.day_counter)
+
         elif self.quote_kind == "discount":
             if len(self.quotes) < 2:
                 raise ValueError("discount curve needs at least two discount nodes")
@@ -83,16 +84,19 @@ class CurveNodes:
                 dates.insert(0, self.as_of)
                 discounts.insert(0, 1.0)
             yts = DiscountCurve(dates, discounts, self.day_counter)
+
         elif self.quote_kind == "forward":
             if len(self.quotes) < 2:
                 raise ValueError("forward curve needs at least two nodes")
             yts = ForwardCurve(self.dates, self.quotes, self.day_counter)
+
         elif self.quote_kind == "flat":
             if len(self.quotes) != 1:
                 raise ValueError("quote_kind='flat' expects exactly one zero rate")
             yts = FlatForward(
                 self.as_of, QuoteHandle(SimpleQuote(self.quotes[0])), self.day_counter
             )
+
         else:
             raise ValueError(f"Unsupported quote_kind: {self.quote_kind}")
 

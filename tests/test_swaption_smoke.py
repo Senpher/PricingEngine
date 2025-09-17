@@ -70,7 +70,18 @@ def test_swaption_smoke():
     index = make_forecast_index("euribor6m", fwd_nodes)
     expiry = as_of + ql.Period(1, ql.Years)
     swap = _build_swap(as_of, dc, index, disc_nodes.yts_handle, issue=expiry)
-    swpt = Swaption(swap=swap, expiries=[expiry])
+    vol_surface = ql.SwaptionVolatilityStructureHandle(
+        ql.ConstantSwaptionVolatility(
+            as_of,
+            ql.TARGET(),
+            ql.ModifiedFollowing,
+            0.01,
+            dc,
+        )
+    )
+    swpt = Swaption(
+        swap=swap, expiries=[expiry], vol_surface=vol_surface, vol_model="black"
+    )
 
     mtm = swpt.mark_to_market()
     assert isinstance(mtm, float)

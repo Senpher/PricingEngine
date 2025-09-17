@@ -2,20 +2,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Type, cast
+from typing import Type
 
-from pandas import DataFrame, merge, option_context
 from QuantLib import (
-    Annual,
-    Continuous,
     DiscountingSwapEngine,
-    QuoteHandle,
-    SimpleQuote,
     Swap,
     VanillaSwap,
     YieldTermStructureHandle,
+    QuoteHandle,
+    SimpleQuote,
     ZeroSpreadedTermStructure,
+    Continuous,
+    Annual,
+    Date,
+    Settings,
 )
+from pandas import DataFrame, merge, option_context
 
 from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg, SwapLeg
 from pricingengine.instruments._instrument import Instrument
@@ -56,13 +58,11 @@ class InterestRateSwap(Instrument):
         else:
             if issubclass(t1, FixedLeg) and issubclass(t2, FixedLeg):
                 raise ValueError(
-                    "'paying_leg' and 'receiving_leg' cannot be of the same type "
-                    "`FixedLeg`"
+                    "'paying_leg' and 'receiving_leg' cannot be of the same type `FixedLeg`"
                 )
             elif issubclass(t1, FloatingLeg) and issubclass(t2, FloatingLeg):
                 raise ValueError(
-                    "'paying_leg' and 'receiving_leg' cannot be of the same type "
-                    "`FloatingLeg`"
+                    "'paying_leg' and 'receiving_leg' cannot be of the same type `FloatingLeg`"
                 )
             else:
                 pass
@@ -89,15 +89,16 @@ class InterestRateSwap(Instrument):
     # ---------- properties ----------
     @property
     def fixed_leg(self) -> FixedLeg:
-        return cast(FixedLeg, self._leg(FixedLeg))
+        return self._leg(FixedLeg)
 
     @property
     def floating_leg(self) -> FloatingLeg:
-        return cast(FloatingLeg, self._leg(FloatingLeg))
+        return self._leg(FloatingLeg)
 
     @property
-    def valuation_date(self):
-        return self.receiving_leg.valuation_date
+    def valuation_date(self) -> Date:
+        # Always reflect the current global eval date
+        return Settings.instance().evaluationDate
 
     @property
     def currency(self):
@@ -113,7 +114,7 @@ class InterestRateSwap(Instrument):
 
     @property
     def is_expired(self):
-        return self.valuation_date >= self.maturity
+        return self.valuation_date > self.maturity
 
     # ---------- discounting engine ----------
     @cached_property
@@ -181,14 +182,18 @@ class InterestRateSwap(Instrument):
         vs.setPricingEngine(self.discount_engine)
         return vs
 
+    def vanilla(self) -> VanillaSwap:  # needed for Swaption
+        vs = self._vanilla_swap_ql()
+        return vs
+
     # ---------- analytics ----------
     def mark_to_market(self) -> float:
         if self.is_expired:
             return 0.0
         return self._swap_ql().NPV()
 
-    def mtm(self) -> float:  # pragma: no cover - simple alias
-        """Alias to satisfy Instrument interface."""
+    def mtm(self) -> float:
+        """Alias to satisfy :class:`Instrument` abstract interface."""
         return self.mark_to_market()
 
     def pv01(self) -> float:
