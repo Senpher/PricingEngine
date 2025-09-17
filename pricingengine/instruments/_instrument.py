@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 class Instrument(ABC):
     """Abstract base class for all instrument objects."""
 

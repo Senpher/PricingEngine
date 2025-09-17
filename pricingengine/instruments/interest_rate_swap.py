@@ -52,37 +52,23 @@ class InterestRateSwap(Instrument):
         t1, t2 = type(self.paying_leg), type(self.receiving_leg)
         # Type checks
         if not issubclass(t1, SwapLeg) or not issubclass(t2, SwapLeg):
-            raise ValueError(
-                "'paying_leg' and 'receiving_leg' must be a subclass of `SwapLeg`"
-            )
+            raise ValueError("'paying_leg' and 'receiving_leg' must be a subclass of `SwapLeg`")
         else:
             if issubclass(t1, FixedLeg) and issubclass(t2, FixedLeg):
-                raise ValueError(
-                    "'paying_leg' and 'receiving_leg' cannot be of the same type `FixedLeg`"
-                )
+                raise ValueError("'paying_leg' and 'receiving_leg' cannot be of the same type `FixedLeg`")
             elif issubclass(t1, FloatingLeg) and issubclass(t2, FloatingLeg):
-                raise ValueError(
-                    "'paying_leg' and 'receiving_leg' cannot be of the same type `FloatingLeg`"
-                )
+                raise ValueError("'paying_leg' and 'receiving_leg' cannot be of the same type `FloatingLeg`")
             else:
                 pass
         # Alignment checks
         if self.paying_leg.valuation_date != self.receiving_leg.valuation_date:
-            raise ValueError(
-                "'paying_leg' and 'receiving_leg' must have the same 'valuation_date'"
-            )
+            raise ValueError("'paying_leg' and 'receiving_leg' must have the same 'valuation_date'")
         elif self.paying_leg.issue_date != self.receiving_leg.issue_date:
-            raise ValueError(
-                "'paying_leg' and 'receiving_leg' must have the same 'issue_date'"
-            )
+            raise ValueError("'paying_leg' and 'receiving_leg' must have the same 'issue_date'")
         elif self.paying_leg.maturity != self.receiving_leg.maturity:
-            raise ValueError(
-                "'paying_leg' and 'receiving_leg' must have the same 'maturity'"
-            )
+            raise ValueError("'paying_leg' and 'receiving_leg' must have the same 'maturity'")
         elif self.paying_leg.currency != self.receiving_leg.currency:
-            raise ValueError(
-                "'paying_leg' and 'receiving_leg' must have the same 'currency'"
-            )
+            raise ValueError("'paying_leg' and 'receiving_leg' must have the same 'currency'")
         else:
             pass
 
@@ -163,11 +149,7 @@ class InterestRateSwap(Instrument):
         `VanillaSwap` object also includes `fairRate` and `fairSpread` methods
         and is therefore used for construction and valuation of swaptions.
         """
-        swap_type = (
-            VanillaSwap.Payer
-            if (self.fixed_leg is self.paying_leg)
-            else VanillaSwap.Receiver
-        )
+        swap_type = VanillaSwap.Payer if (self.fixed_leg is self.paying_leg) else VanillaSwap.Receiver
         vs = VanillaSwap(
             swap_type,
             self.fixed_leg.nominal,
@@ -251,16 +233,8 @@ class InterestRateSwap(Instrument):
 
         # Rebuild the floating leg with the bumped index so cashflows bind to it.
         fl_bumped = self.floating_leg.with_index(idx_bumped)
-        pay_b = (
-            fl_bumped.cashflows
-            if (self.floating_leg is self.paying_leg)
-            else self.paying_leg.cashflows
-        )
-        rec_b = (
-            fl_bumped.cashflows
-            if (self.floating_leg is self.receiving_leg)
-            else self.receiving_leg.cashflows
-        )
+        pay_b = fl_bumped.cashflows if (self.floating_leg is self.paying_leg) else self.paying_leg.cashflows
+        rec_b = fl_bumped.cashflows if (self.floating_leg is self.receiving_leg) else self.receiving_leg.cashflows
 
         sw_bumped = Swap(pay_b, rec_b)
         sw_bumped.setPricingEngine(self.discount_engine)  # same discounting
@@ -272,12 +246,8 @@ class InterestRateSwap(Instrument):
     def cashflow_table(self) -> DataFrame:
         """Bloomberg-style cashflow breakdown using the bound discount curve."""
         sw = self._swap_ql()
-        df_pay = DataFrame(
-            data=({"Date": c.date(), "Pay": -c.amount()} for c in sw.leg(0))
-        )
-        df_rec = DataFrame(
-            data=({"Date": c.date(), "Receive": c.amount()} for c in sw.leg(1))
-        )
+        df_pay = DataFrame(data=({"Date": c.date(), "Pay": -c.amount()} for c in sw.leg(0)))
+        df_rec = DataFrame(data=({"Date": c.date(), "Receive": c.amount()} for c in sw.leg(1)))
 
         h = self.discount_curve
         df = (

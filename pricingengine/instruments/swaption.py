@@ -77,9 +77,7 @@ class Swaption(Instrument):
             raise TypeError("vol_surface must be a SwaptionVolatilityStructureHandle.")
         link = self.vol_surface.currentLink()
         if not isinstance(link, SwaptionVolatilityStructure):
-            raise TypeError(
-                "vol_surface.currentLink() must be a SwaptionVolatilityStructure."
-            )
+            raise TypeError("vol_surface.currentLink() must be a SwaptionVolatilityStructure.")
         if self.settlement is None or self.settlement.lower() not in {
             "physical",
             "cash",
@@ -126,9 +124,7 @@ class Swaption(Instrument):
         sch = v.fixedSchedule()
         start = sch.startDate()
         end = sch.endDate()
-        months = 12 * (end.year() - start.year()) + (
-            int(end.month()) - int(start.month())
-        )
+        months = 12 * (end.year() - start.year()) + (int(end.month()) - int(start.month()))
         if months <= 0:
             months = 1
         return Period(months, Months)
@@ -188,11 +184,7 @@ class Swaption(Instrument):
             return BermudanExercise(list(exps))
 
     def _settlement_ql(self):
-        return (
-            Settlement.Physical
-            if self.settlement.lower() == "physical"
-            else Settlement.Cash
-        )
+        return Settlement.Physical if self.settlement.lower() == "physical" else Settlement.Cash
 
     def _engine_european(self):
         """
@@ -211,16 +203,12 @@ class Swaption(Instrument):
         if self.hw_a is None or self.hw_sigma is None:
             model = self._calibrate_hw()
         else:
-            model = HullWhite(
-                self.irs.discount_curve, float(self.hw_a), float(self.hw_sigma)
-            )
+            model = HullWhite(self.irs.discount_curve, float(self.hw_a), float(self.hw_sigma))
 
         if self.time_grid is not None:
             return TreeSwaptionEngine(model, self.time_grid, self.irs.discount_curve)
         else:
-            return TreeSwaptionEngine(
-                model, int(self.hw_time_steps), self.irs.discount_curve
-            )
+            return TreeSwaptionEngine(model, int(self.hw_time_steps), self.irs.discount_curve)
 
     def _use_tree(self) -> bool:
         if self.engine == "hw":
@@ -232,17 +220,12 @@ class Swaption(Instrument):
     # --- option tenor -> option date (on index calendar) ---
     def _option_date_from_tenor(self, opt_tenor: Period) -> Date:
         idx = self.irs.floating_leg.index
-        return idx.fixingCalendar().advance(
-            self.valuation_date, opt_tenor, ModifiedFollowing
-        )
+        return idx.fixingCalendar().advance(self.valuation_date, opt_tenor, ModifiedFollowing)
 
     # --- detect cube-only API through capability check (SWIG won’t downcast) ---
     @staticmethod
     def _has_cube_api(surf: SwaptionVolatilityStructure) -> bool:
-        return all(
-            callable(getattr(surf, name, None))
-            for name in ("optionTenors", "swapTenors", "atmStrike", "shift")
-        )
+        return all(callable(getattr(surf, name, None)) for name in ("optionTenors", "swapTenors", "atmStrike", "shift"))
 
     def _atm_strike_for(self, opt_tenor: Period, swap_tenor: Period) -> float:
         """
@@ -289,9 +272,7 @@ class Swaption(Instrument):
                     pass  # no shift method on surface must imply no shift
         return 0.0
 
-    def _surface_eval(
-        self, opt_tenor: Period, swap_tenor: Period, strike: float, vt
-    ) -> float:
+    def _surface_eval(self, opt_tenor: Period, swap_tenor: Period, strike: float, vt) -> float:
         """
         Get vol safely from surface/cube:
           * If cube API is visible, try (tenor, tenor, strike, voltype, shift).
@@ -346,9 +327,7 @@ class Swaption(Instrument):
             except Exception:
                 basket = []
         if not basket:
-            st = (
-                self._required_swap_len_period()
-            )  # swap tenor of the underlying (in months → Period)
+            st = self._required_swap_len_period()  # swap tenor of the underlying (in months → Period)
             basket = [(Period("6M"), st), (Period("1Y"), st), (Period("2Y"), st)]
             if hasattr(surf, "enableExtrapolation"):
                 try:
@@ -446,9 +425,7 @@ class Swaption(Instrument):
         # Exact whole-month swap length from the underlying vanilla schedule
         sch = v.fixedSchedule()
         start, end = sch.startDate(), sch.endDate()
-        months = 12 * (end.year() - start.year()) + (
-            int(end.month()) - int(start.month())
-        )
+        months = 12 * (end.year() - start.year()) + (int(end.month()) - int(start.month()))
         if months <= 0:
             months = 1
         swap_len = Period(months, Months)
