@@ -130,7 +130,7 @@ class SwapLeg:
         # Always reflect the current global eval date
         return Settings.instance().evaluationDate
 
-    @cached_property
+    @property
     def schedule(self) -> Schedule:
         """Returns a schedule with all payment dates according to swap-leg settings."""
         return Schedule(
@@ -144,7 +144,7 @@ class SwapLeg:
             False,
         )
 
-    @cached_property
+    @property
     def future_schedule(self) -> Schedule:
         """
         Returns a schedule with dates for future payments.
