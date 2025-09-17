@@ -54,9 +54,7 @@ class EquityOption(Instrument):
         v = self.volatility if volatility is None else volatility
         r_ts = YieldTermStructureHandle(FlatForward(self.valuation_date, r, dc))
         q_ts = YieldTermStructureHandle(FlatForward(self.valuation_date, q, dc))
-        vol_ts = BlackVolTermStructureHandle(
-            BlackConstantVol(self.valuation_date, TARGET(), v, dc)
-        )
+        vol_ts = BlackVolTermStructureHandle(BlackConstantVol(self.valuation_date, TARGET(), v, dc))
         process = BlackScholesMertonProcess(s, q_ts, r_ts, vol_ts)
         payoff = PlainVanillaPayoff(
             Option.Call if self.option_type.lower() == "call" else Option.Put,

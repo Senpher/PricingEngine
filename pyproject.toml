@@ -1,27 +1,23 @@
-[build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[project]
+[tool.poetry]
 name = "pricingengine"
 version = "0.1.0"
+description = ""
+authors = ["Senpher <crazykronecker@gmail.com>"]
 readme = "README.md"
-requires-python = ">=3.11"
-dependencies = [
-    "QuantLib>=1.27",
-    "pandas>=2.0",
-]
 
-[project.optional-dependencies]
-test = [
-    "pytest>=7.0",
-]
+[tool.poetry.dependencies]
+python = "^3.13"
+quantlib = "^1.39"
+pandas = "^2.3.2"
+ruff = "==0.13.0"
+poetry-core = "^2.2.0"
 
-[tool.uv]
-dev-dependencies = [
-    "black>=24.0",
-    "mypy>=1.8",
-    "pytest>=7.0",
-    "ruff>=0.1.5",
-]
 
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "ruff==0.13.0"
+]

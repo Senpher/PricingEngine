@@ -2,20 +2,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Type, cast
+from typing import Type
 
-from pandas import DataFrame, merge, option_context
 from QuantLib import (
-    Annual,
-    Continuous,
     DiscountingSwapEngine,
-    QuoteHandle,
-    SimpleQuote,
     Swap,
     VanillaSwap,
     YieldTermStructureHandle,
+    QuoteHandle,
+    SimpleQuote,
     ZeroSpreadedTermStructure,
+    Continuous,
+    Annual,
+    Date,
+    Settings,
 )
+from pandas import DataFrame, merge, option_context
 
 from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg, SwapLeg
 from pricingengine.instruments._instrument import Instrument
@@ -50,52 +52,39 @@ class InterestRateSwap(Instrument):
         t1, t2 = type(self.paying_leg), type(self.receiving_leg)
         # Type checks
         if not issubclass(t1, SwapLeg) or not issubclass(t2, SwapLeg):
-            raise ValueError(
-                "'paying_leg' and 'receiving_leg' must be a subclass of `SwapLeg`"
-            )
+            raise ValueError("'paying_leg' and 'receiving_leg' must be a subclass of `SwapLeg`")
         else:
             if issubclass(t1, FixedLeg) and issubclass(t2, FixedLeg):
-                raise ValueError(
-                    "'paying_leg' and 'receiving_leg' cannot be of the same type `FixedLeg`"
-                )
+                raise ValueError("'paying_leg' and 'receiving_leg' cannot be of the same type `FixedLeg`")
             elif issubclass(t1, FloatingLeg) and issubclass(t2, FloatingLeg):
-                raise ValueError(
-                    "'paying_leg' and 'receiving_leg' cannot be of the same type `FloatingLeg`"
-                )
+                raise ValueError("'paying_leg' and 'receiving_leg' cannot be of the same type `FloatingLeg`")
             else:
                 pass
         # Alignment checks
         if self.paying_leg.valuation_date != self.receiving_leg.valuation_date:
-            raise ValueError(
-                "'paying_leg' and 'receiving_leg' must have the same 'valuation_date'"
-            )
+            raise ValueError("'paying_leg' and 'receiving_leg' must have the same 'valuation_date'")
         elif self.paying_leg.issue_date != self.receiving_leg.issue_date:
-            raise ValueError(
-                "'paying_leg' and 'receiving_leg' must have the same 'issue_date'"
-            )
+            raise ValueError("'paying_leg' and 'receiving_leg' must have the same 'issue_date'")
         elif self.paying_leg.maturity != self.receiving_leg.maturity:
-            raise ValueError(
-                "'paying_leg' and 'receiving_leg' must have the same 'maturity'"
-            )
+            raise ValueError("'paying_leg' and 'receiving_leg' must have the same 'maturity'")
         elif self.paying_leg.currency != self.receiving_leg.currency:
-            raise ValueError(
-                "'paying_leg' and 'receiving_leg' must have the same 'currency'"
-            )
+            raise ValueError("'paying_leg' and 'receiving_leg' must have the same 'currency'")
         else:
             pass
 
     # ---------- properties ----------
     @property
     def fixed_leg(self) -> FixedLeg:
-        return cast(FixedLeg, self._leg(FixedLeg))
+        return self._leg(FixedLeg)
 
     @property
     def floating_leg(self) -> FloatingLeg:
-        return cast(FloatingLeg, self._leg(FloatingLeg))
+        return self._leg(FloatingLeg)
 
     @property
-    def valuation_date(self):
-        return self.receiving_leg.valuation_date
+    def valuation_date(self) -> Date:
+        # Always reflect the current global eval date
+        return Settings.instance().evaluationDate
 
     @property
     def currency(self):
@@ -111,7 +100,7 @@ class InterestRateSwap(Instrument):
 
     @property
     def is_expired(self):
-        return self.valuation_date >= self.maturity
+        return self.valuation_date > self.maturity
 
     # ---------- discounting engine ----------
     @cached_property
@@ -160,11 +149,7 @@ class InterestRateSwap(Instrument):
         `VanillaSwap` object also includes `fairRate` and `fairSpread` methods
         and is therefore used for construction and valuation of swaptions.
         """
-        swap_type = (
-            VanillaSwap.Payer
-            if (self.fixed_leg is self.paying_leg)
-            else VanillaSwap.Receiver
-        )
+        swap_type = VanillaSwap.Payer if (self.fixed_leg is self.paying_leg) else VanillaSwap.Receiver
         vs = VanillaSwap(
             swap_type,
             self.fixed_leg.nominal,
@@ -179,14 +164,18 @@ class InterestRateSwap(Instrument):
         vs.setPricingEngine(self.discount_engine)
         return vs
 
+    def vanilla(self) -> VanillaSwap:  # needed for Swaption
+        vs = self._vanilla_swap_ql()
+        return vs
+
     # ---------- analytics ----------
     def mark_to_market(self) -> float:
         if self.is_expired:
             return 0.0
         return self._swap_ql().NPV()
 
-    def mtm(self) -> float:  # pragma: no cover - simple alias
-        """Alias to satisfy Instrument interface."""
+    def mtm(self) -> float:
+        """Alias to satisfy :class:`Instrument` abstract interface."""
         return self.mark_to_market()
 
     def pv01(self) -> float:
@@ -248,16 +237,8 @@ class InterestRateSwap(Instrument):
 
         # Rebuild the floating leg with the bumped index so cashflows bind to it.
         fl_bumped = self.floating_leg.with_index(idx_bumped)
-        pay_b = (
-            fl_bumped.cashflows
-            if (self.floating_leg is self.paying_leg)
-            else self.paying_leg.cashflows
-        )
-        rec_b = (
-            fl_bumped.cashflows
-            if (self.floating_leg is self.receiving_leg)
-            else self.receiving_leg.cashflows
-        )
+        pay_b = fl_bumped.cashflows if (self.floating_leg is self.paying_leg) else self.paying_leg.cashflows
+        rec_b = fl_bumped.cashflows if (self.floating_leg is self.receiving_leg) else self.receiving_leg.cashflows
 
         sw_bumped = Swap(pay_b, rec_b)
         sw_bumped.setPricingEngine(self.discount_engine)  # same discounting
@@ -269,12 +250,8 @@ class InterestRateSwap(Instrument):
     def cashflow_table(self) -> DataFrame:
         """Bloomberg-style cashflow breakdown using the bound discount curve."""
         sw = self._swap_ql()
-        df_pay = DataFrame(
-            data=({"Date": c.date(), "Pay": -c.amount()} for c in sw.leg(0))
-        )
-        df_rec = DataFrame(
-            data=({"Date": c.date(), "Receive": c.amount()} for c in sw.leg(1))
-        )
+        df_pay = DataFrame(data=({"Date": c.date(), "Pay": -c.amount()} for c in sw.leg(0)))
+        df_rec = DataFrame(data=({"Date": c.date(), "Receive": c.amount()} for c in sw.leg(1)))
 
         h = self.discount_curve
         df = (
