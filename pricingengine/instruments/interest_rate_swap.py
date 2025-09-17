@@ -4,20 +4,20 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import Type
 
+from pandas import DataFrame, merge, option_context
 from QuantLib import (
+    Annual,
+    Continuous,
+    Date,
     DiscountingSwapEngine,
+    QuoteHandle,
+    Settings,
+    SimpleQuote,
     Swap,
     VanillaSwap,
     YieldTermStructureHandle,
-    QuoteHandle,
-    SimpleQuote,
     ZeroSpreadedTermStructure,
-    Continuous,
-    Annual,
-    Date,
-    Settings,
 )
-from pandas import DataFrame, merge, option_context
 
 from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg, SwapLeg
 from pricingengine.instruments._instrument import Instrument

@@ -3,24 +3,24 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from functools import cached_property
 
+from pandas import DataFrame, option_context
 from QuantLib import (
     Calendar,
     CashFlow,
-    DateGeneration,
     Date,
+    DateGeneration,
     DayCounter,
     FixedRateLeg,
+    IborIndex,
     IborLeg,
     ModifiedFollowing,
     Period,
     Preceding,
     Schedule,
+    Settings,
     as_coupon,
     as_floating_rate_coupon,
-    IborIndex,
-    Settings,
 )
-from pandas import DataFrame, option_context
 
 from pricingengine.currencies import CURRENCIES
 

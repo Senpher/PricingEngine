@@ -1,15 +1,15 @@
 from QuantLib import (
-    USDCurrency,
+    AUDCurrency,
+    CADCurrency,
+    CHFCurrency,
+    DKKCurrency,
     EURCurrency,
     GBPCurrency,
     JPYCurrency,
-    CHFCurrency,
-    CADCurrency,
-    SEKCurrency,
     NOKCurrency,
-    DKKCurrency,
-    AUDCurrency,
     NZDCurrency,
+    SEKCurrency,
+    USDCurrency,
 )
 
 # Dictionary mapping ISO currency codes to QuantLib Currency instances
