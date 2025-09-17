@@ -1,55 +1,57 @@
+import math
 from dataclasses import FrozenInstanceError
 
-import math
 import numpy as np
 import pandas as pd
 import pytest
 from QuantLib import (
     TARGET,
-    Date,
-    Settings,
-    QuoteHandle,
-    SimpleQuote,
-    SwaptionVolatilityMatrix,
-    SabrSwaptionVolatilityCube,
-    RelinkableSwaptionVolatilityStructureHandle,
-    SwaptionVolatilityCube,
     Actual360,
-    Preceding,
-    IborIndex,
-    SwapIndex,
-    SwaptionVolatilityStructureHandle,
-    ConstantSwaptionVolatility,
-    NullCalendar,
-    Following,
     Actual365Fixed,
-    EndCriteria,
-    Compounded,
     Annual,
-    ZeroCurve,
-    ForwardCurve,
-    DateGeneration,
-    Schedule,
-    YieldTermStructureHandle,
-    Period,
-    ModifiedFollowing,
-    BlackCalibrationHelper,
-    LevenbergMarquardt,
-    Settlement,
-    Swaption as QLSwaption,
-    JamshidianSwaptionEngine,
-    HullWhite,
-    ShiftedLognormal,
-    EuropeanExercise,
-    Matrix,
-    BlackSwaptionEngine,
-    Months,
     BachelierSwaptionEngine,
+    BlackCalibrationHelper,
+    BlackSwaptionEngine,
+    Compounded,
+    ConstantSwaptionVolatility,
+    Date,
+    DateGeneration,
+    EndCriteria,
+    EuropeanExercise,
     FlatForward,
+    Following,
+    ForwardCurve,
+    HullWhite,
+    IborIndex,
+    JamshidianSwaptionEngine,
+    LevenbergMarquardt,
+    Matrix,
+    ModifiedFollowing,
+    Months,
     Normal,
-    TimeGrid,
-    SwaptionHelper,
+    NullCalendar,
+    Period,
+    Preceding,
+    QuoteHandle,
+    RelinkableSwaptionVolatilityStructureHandle,
+    SabrSwaptionVolatilityCube,
     SavedSettings,
+    Schedule,
+    Settings,
+    Settlement,
+    ShiftedLognormal,
+    SimpleQuote,
+    SwapIndex,
+    SwaptionHelper,
+    SwaptionVolatilityCube,
+    SwaptionVolatilityMatrix,
+    SwaptionVolatilityStructureHandle,
+    TimeGrid,
+    YieldTermStructureHandle,
+    ZeroCurve,
+)
+from QuantLib import (
+    Swaption as QLSwaption,
 )
 
 from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg
@@ -64,7 +66,8 @@ def valuation_date():
     with SavedSettings():
         d = Date(10, 6, 2025)
         Settings.instance().evaluationDate = d
-        yield d  # tests can still depend on 'valuation_date'  # upon exiting the context, SavedSettings restores the previous state
+        yield d  # tests can still depend on 'valuation_date'
+        # Upon exit, SavedSettings restores the previous evaluation date.
 
 
 @pytest.fixture
@@ -155,6 +158,7 @@ def index(
     Crucial fix: include 0D/1D/2D pillars so the curve reference date <= any query date.
     """
     import math
+
     from QuantLib import Actual365Fixed
 
     dc365 = Actual365Fixed()
@@ -286,13 +290,13 @@ def irs(
 @pytest.fixture
 def normal_surface_handle():
     from QuantLib import (
-        SwaptionVolatilityMatrix,
-        NullCalendar,
-        Following,
         Actual365Fixed,
-        Period,
+        Following,
         Normal,
+        NullCalendar,
+        Period,
         RelinkableSwaptionVolatilityStructureHandle,
+        SwaptionVolatilityMatrix,
     )
 
     dc = Actual365Fixed()
@@ -565,7 +569,24 @@ def test_dump_discount_curve(discount_curve_handle, valuation_date, calendar):
     assert curve["df"].iloc[0] <= 1.0 and curve["df"].iloc[-1] >= 0.0
     assert curve["zero_rate_pct"].min() > -1.0
 
-    # import matplotlib  # matplotlib.use("Agg")  # # headless backend for CI  # import matplotlib.pyplot as plt  #  # # Zero curve  # ax = curve.plot(x="t_years", y="zero_rate_pct", legend=False)  # ax.set_title("Zero Curve (annual-compounded)")  # ax.set_xlabel("Maturity (years)")  # ax.set_ylabel("Zero rate (%)")  # fig = ax.get_figure()  # fig.tight_layout()  # fig.savefig('Zero.png', dpi=200)  #  # # Discount factors  # ax2 = curve.plot(x="t_years", y="df", legend=False)  # ax2.set_title("Discount Factors")  # ax2.set_xlabel("Maturity (years)")  # ax2.set_ylabel("DF")  # fig2 = ax2.get_figure()  # fig2.tight_layout()  # fig2.savefig('Discount.png', dpi=200)
+    # Optional plotting snippet (disabled in automated runs):
+    #   import matplotlib
+    #   matplotlib.use("Agg")  # headless backend for CI
+    #   import matplotlib.pyplot as plt
+    #   ax = curve.plot(x="t_years", y="zero_rate_pct", legend=False)
+    #   ax.set_title("Zero Curve (annual-compounded)")
+    #   ax.set_xlabel("Maturity (years)")
+    #   ax.set_ylabel("Zero rate (%)")
+    #   fig = ax.get_figure()
+    #   fig.tight_layout()
+    #   fig.savefig("Zero.png", dpi=200)
+    #   ax2 = curve.plot(x="t_years", y="df", legend=False)
+    #   ax2.set_title("Discount Factors")
+    #   ax2.set_xlabel("Maturity (years)")
+    #   ax2.set_ylabel("DF")
+    #   fig2 = ax2.get_figure()
+    #   fig2.tight_layout()
+    #   fig2.savefig("Discount.png", dpi=200)
 
 
 def test_index(index, valuation_date, issue_date, maturity, tenor, calendar):
@@ -643,9 +664,33 @@ def test_index(index, valuation_date, issue_date, maturity, tenor, calendar):
 
     # 3) Rates are sane
     assert df["forward_pct"].min() > -1.0
-    assert (
-        df["forward_pct"].max() < 10.0
-    )  # # import matplotlib  # matplotlib.use("Agg")  # import matplotlib.pyplot as plt  #  # # Forward curve vs fixing time  # ax = df.plot(x="t_fix_years", y="forward_pct", legend=False)  # ax.set_title(f"{index.name()} Forwards")  # ax.set_xlabel("Fixing time (years)")  # ax.set_ylabel("Forward rate (%)")  # fig = ax.get_figure()  # fig.tight_layout()  # p1 = "index_forward_curve.png"  # fig.savefig(p1, dpi=200)  # plt.close(fig)  #  # # Forward vs accrual start (sometimes nicer for projection intuition)  # ax2 = df.plot(x="t_start_years", y="forward_pct", legend=False)  # ax2.set_title(f"{index.name()} Forwards (by accrual start)")  # ax2.set_xlabel("Accrual start (years from valuation)")  # ax2.set_ylabel("Forward rate (%)")  # fig2 = ax2.get_figure()  # fig2.tight_layout()  # p2 = "index_forward_by_start.png"  # fig2.savefig(p2, dpi=200)  # plt.close(fig2)  #  # # Quick peek  # print('\n')  # print(df.head().to_string(index=False))  # print(f"Saved plots to:\n  {p1}\n  {p2}")
+    assert df["forward_pct"].max() < 10.0
+
+    # Optional plotting guidance for debugging:
+    #   import matplotlib
+    #   matplotlib.use("Agg")
+    #   import matplotlib.pyplot as plt
+    #   ax = df.plot(x="t_fix_years", y="forward_pct", legend=False)
+    #   ax.set_title(f"{index.name()} Forwards")
+    #   ax.set_xlabel("Fixing time (years)")
+    #   ax.set_ylabel("Forward rate (%)")
+    #   fig = ax.get_figure()
+    #   fig.tight_layout()
+    #   p1 = "index_forward_curve.png"
+    #   fig.savefig(p1, dpi=200)
+    #   plt.close(fig)
+    #   ax2 = df.plot(x="t_start_years", y="forward_pct", legend=False)
+    #   ax2.set_title(f"{index.name()} Forwards (by accrual start)")
+    #   ax2.set_xlabel("Accrual start (years from valuation)")
+    #   ax2.set_ylabel("Forward rate (%)")
+    #   fig2 = ax2.get_figure()
+    #   fig2.tight_layout()
+    #   p2 = "index_forward_by_start.png"
+    #   fig2.savefig(p2, dpi=200)
+    #   plt.close(fig2)
+    #   print()
+    #   print(df.head().to_string(index=False))
+    #   print(f"Saved plots to:\n  {p1}\n  {p2}")
 
 
 @pytest.mark.swaption_generic

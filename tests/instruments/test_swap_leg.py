@@ -1,8 +1,9 @@
-import pytest
 from dataclasses import FrozenInstanceError
 from operator import eq, ne
 
+import pytest
 from QuantLib import (
+    TARGET,
     Actual360,
     Calendar,
     Continuous,
@@ -16,28 +17,26 @@ from QuantLib import (
     ModifiedFollowing,
     Period,
     Preceding,
+    SavedSettings,
     Schedule,
     Settings,
-    SavedSettings,
     Simple,
-    TARGET,
     YieldTermStructureHandle,
     as_coupon,
     as_floating_rate_coupon,
 )
 
 from pricingengine.cashflows.swap_leg import (
-    SwapLeg,
-    FixedLeg,
-    FloatingLeg,
-    AmortizedSwapLeg,
     AmortizedFixedLeg,
     AmortizedFloatingLeg,
+    AmortizedSwapLeg,
+    FixedLeg,
+    FloatingLeg,
+    SwapLeg,
     forward_marching_schedule,
     update_dates_in_schedule,
 )
 from pricingengine.currencies import CURRENCIES
-
 
 # -----------------------
 # Shared fixtures
