@@ -56,13 +56,11 @@ class InterestRateSwap(Instrument):
         else:
             if issubclass(t1, FixedLeg) and issubclass(t2, FixedLeg):
                 raise ValueError(
-                    "'paying_leg' and 'receiving_leg' cannot be of the same type "
-                    "`FixedLeg`"
+                    "'paying_leg' and 'receiving_leg' cannot be of the same type `FixedLeg`"
                 )
             elif issubclass(t1, FloatingLeg) and issubclass(t2, FloatingLeg):
                 raise ValueError(
-                    "'paying_leg' and 'receiving_leg' cannot be of the same type "
-                    "`FloatingLeg`"
+                    "'paying_leg' and 'receiving_leg' cannot be of the same type `FloatingLeg`"
                 )
             else:
                 pass
