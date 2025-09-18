@@ -13,7 +13,6 @@ from QuantLib import (
     BlackVolTermStructureHandle,
     Date,
     EuropeanExercise,
-    FdBlackScholesVanillaEngine,
     FlatForward,
     Option,
     PlainVanillaPayoff,
@@ -35,6 +34,26 @@ except ImportError:  # pragma: no cover - environment dependent
     BjerksundStenslandEngine = None  # type: ignore[assignment]
 
 from pricingengine.instruments._instrument import Instrument
+
+try:  # Optional engines depending on QuantLib build
+    from QuantLib import BaroneAdesiWhaleyEngine
+except ImportError:  # pragma: no cover - optional dependency
+    BaroneAdesiWhaleyEngine = None  # type: ignore[assignment]
+
+try:
+    from QuantLib import BinomialVanillaEngine
+except ImportError:  # pragma: no cover - optional dependency
+    BinomialVanillaEngine = None  # type: ignore[assignment]
+
+try:
+    from QuantLib import BjerksundStenslandEngine
+except ImportError:  # pragma: no cover - optional dependency
+    BjerksundStenslandEngine = None  # type: ignore[assignment]
+
+try:
+    from QuantLib import FdBlackScholesVanillaEngine
+except ImportError:  # pragma: no cover - optional dependency
+    FdBlackScholesVanillaEngine = None  # type: ignore[assignment]
 
 _ENGINE_ALIASES: dict[str, str] = {
     "analytic": "analytic",
@@ -272,16 +291,24 @@ class EquityOption(Instrument):
         if resolved == "analytic":
             return AnalyticEuropeanEngine(process)
         if resolved == "barone_adesi_whaley":
-            if BaroneAdesiWhaleyEngine is None:  # pragma: no cover - defensive
-                raise ValueError("Barone-Adesi-Whaley engine is unavailable in this QuantLib build.")
+            if BaroneAdesiWhaleyEngine is None:
+                msg = "Barone-Adesi-Whaley engine is unavailable in this QuantLib build"
+                raise RuntimeError(msg)
             return BaroneAdesiWhaleyEngine(process)
         if resolved == "bjerksund_stensland":
-            if BjerksundStenslandEngine is None:  # pragma: no cover - defensive
-                raise ValueError("Bjerksund-Stensland engine is unavailable in this QuantLib build.")
+            if BjerksundStenslandEngine is None:
+                msg = "Bjerksund-Stensland engine is unavailable in this QuantLib build"
+                raise RuntimeError(msg)
             return BjerksundStenslandEngine(process)
         if resolved == "finite_difference":
+            if FdBlackScholesVanillaEngine is None:
+                msg = "Finite-difference engine is unavailable in this QuantLib build"
+                raise RuntimeError(msg)
             return FdBlackScholesVanillaEngine(process, self.time_steps, self.grid_points)
         if resolved == "binomial":
+            if BinomialVanillaEngine is None:
+                msg = "Binomial engine is unavailable in this QuantLib build"
+                raise RuntimeError(msg)
             return BinomialVanillaEngine(process, self.binomial_tree, self.time_steps)
         raise ValueError(f"Unsupported engine '{engine}'.")  # pragma: no cover - defensive
 
