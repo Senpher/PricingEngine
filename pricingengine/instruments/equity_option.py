@@ -7,6 +7,7 @@ from QuantLib import (
     TARGET,
     Actual365Fixed,
     AnalyticEuropeanEngine,
+    BinomialVanillaEngine,
     BlackConstantVol,
     BlackScholesMertonProcess,
     BlackVolTermStructureHandle,
@@ -21,6 +22,16 @@ from QuantLib import (
     VanillaOption,
     YieldTermStructureHandle,
 )
+
+try:  # pragma: no cover - optional QuantLib engine
+    from QuantLib import BaroneAdesiWhaleyEngine
+except ImportError:  # pragma: no cover - environment dependent
+    BaroneAdesiWhaleyEngine = None  # type: ignore[assignment]
+
+try:  # pragma: no cover - optional QuantLib engine
+    from QuantLib import BjerksundStenslandEngine
+except ImportError:  # pragma: no cover - environment dependent
+    BjerksundStenslandEngine = None  # type: ignore[assignment]
 
 from pricingengine.instruments._instrument import Instrument
 
@@ -48,12 +59,6 @@ _ENGINE_ALIASES: dict[str, str] = {
     "analytic": "analytic",
     "black": "analytic",
     "analytic_european": "analytic",
-    "barone_adesi_whaley": "barone_adesi_whaley",
-    "barone-adesi-whaley": "barone_adesi_whaley",
-    "baw": "barone_adesi_whaley",
-    "bjerksund_stensland": "bjerksund_stensland",
-    "bjerksund-stensland": "bjerksund_stensland",
-    "bs": "bjerksund_stensland",
     "fd": "finite_difference",
     "fdm": "finite_difference",
     "finite_difference": "finite_difference",
@@ -61,6 +66,24 @@ _ENGINE_ALIASES: dict[str, str] = {
     "binomial": "binomial",
     "tree": "binomial",
 }
+
+if BjerksundStenslandEngine is not None:
+    _ENGINE_ALIASES.update(
+        {
+            "bjerksund_stensland": "bjerksund_stensland",
+            "bjerksund-stensland": "bjerksund_stensland",
+            "bs": "bjerksund_stensland",
+        }
+    )
+
+if BaroneAdesiWhaleyEngine is not None:
+    _ENGINE_ALIASES.update(
+        {
+            "barone_adesi_whaley": "barone_adesi_whaley",
+            "barone-adesi-whaley": "barone_adesi_whaley",
+            "baw": "barone_adesi_whaley",
+        }
+    )
 
 _BINOMIAL_TREE_ALIASES: dict[str, str] = {
     "jr": "JR",
