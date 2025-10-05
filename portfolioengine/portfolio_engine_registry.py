@@ -1,0 +1,29 @@
+from rvs_engine_interface.risk_engine.risk_engine_interface import (
+    InitializeRiskEngine,
+)
+
+from enum import Enum
+
+
+class EngineMetricFunction(Enum):
+    VaR = "get_portfolio_var"
+
+
+class PortfolioMetricToEngineClass(Enum):
+    VaR = InitializeRiskEngine
+
+
+def get_engine_class(class_name):
+    engine_class = PortfolioMetricToEngineClass[class_name].value
+    if isinstance(engine_class, type):
+        return engine_class
+    else:
+        return None
+
+
+def get_engine_metric_function(metric_name):
+    try:
+        function_name = EngineMetricFunction[metric_name].value
+    except KeyError:
+        raise ValueError(f"Unknown metric: {metric_name}")
+    return function_name
