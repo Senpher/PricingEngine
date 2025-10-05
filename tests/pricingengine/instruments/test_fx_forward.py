@@ -1,3 +1,4 @@
+import dataclasses
 import math
 import pytest
 from QuantLib import (
@@ -15,6 +16,7 @@ from QuantLib import (
     ModifiedFollowing,
     Days,
 )
+from dataclasses import FrozenInstanceError
 
 from pricingengine.instruments import FxForward
 
@@ -454,9 +456,6 @@ class TestE_HandlesCoverage:
 
 class TestF_DataclassTraits:
     def test_f1_frozen(self, as_of, make_fx):
-        import dataclasses
-        from dataclasses import FrozenInstanceError
-
         with SavedSettings():
             Settings.instance().evaluationDate = as_of
             fwd = make_fx()

@@ -18,8 +18,7 @@ from functools import cached_property
 from pandas import DataFrame, merge
 from typing import Type
 
-from pricingengine.instruments.common import FixedLeg, FloatingLeg, SwapLeg
-from pricingengine.instruments.common import Instrument
+from pricingengine.instruments.common import Instrument, FixedLeg, FloatingLeg, SwapLeg
 
 
 @dataclass(frozen=True, kw_only=True)

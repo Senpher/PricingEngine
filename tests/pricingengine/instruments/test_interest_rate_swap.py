@@ -25,9 +25,9 @@ from QuantLib import (
 )
 from dataclasses import FrozenInstanceError
 
-from pricingengine import CURRENCIES
 from pricingengine.instruments import InterestRateSwap
 from pricingengine.instruments.common import (
+    CURRENCIES,
     AmortizedFixedLeg,
     AmortizedFloatingLeg,
     FixedLeg,

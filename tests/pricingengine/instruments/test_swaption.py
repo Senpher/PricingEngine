@@ -51,10 +51,9 @@ from QuantLib import (
 )
 from dataclasses import FrozenInstanceError
 
-from pricingengine import CURRENCIES
 from pricingengine.instruments import InterestRateSwap
 from pricingengine.instruments import Swaption
-from pricingengine.instruments.common import FixedLeg, FloatingLeg
+from pricingengine.instruments.common import CURRENCIES, FixedLeg, FloatingLeg
 
 
 @pytest.fixture
@@ -153,8 +152,6 @@ def index(
     plus ALL fixings populated (past=constant today's forward future=projected).
     Crucial fix: include 0D/1D/2D pillars so the curve reference date <= any query date.
     """
-    import math
-    from QuantLib import Actual365Fixed
 
     dc365 = Actual365Fixed()
 
@@ -284,16 +281,6 @@ def irs(
 
 @pytest.fixture
 def normal_surface_handle():
-    from QuantLib import (
-        SwaptionVolatilityMatrix,
-        NullCalendar,
-        Following,
-        Actual365Fixed,
-        Period,
-        Normal,
-        RelinkableSwaptionVolatilityStructureHandle,
-    )
-
     dc = Actual365Fixed()
 
     # Dense option tenors (≈ up to 10Y). Include months & years.
@@ -1448,8 +1435,6 @@ class TestSwaptionDomain:
     ):
         """Directional sanity: payer call ↑ when strike ↓ receiver put ↑ when strike ↑."""
         # Build ATM IRS (strike set to fair)
-        from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg
-        from pricingengine.instruments.interest_rate_swap import InterestRateSwap
 
         issue_date = valuation_date + Period("3M")  # swap starts in the future
         fl = FloatingLeg(

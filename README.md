@@ -1,6 +1,8 @@
 # PricingEngine
 
-PricingEngine is a Python library for pricing basic financial instruments on top of [QuantLib](https://www.quantlib.org/). It provides building blocks for term structures, cash flows and instruments so you can prototype analytic valuations.
+PricingEngine is a Python library for pricing basic financial instruments on top
+of [QuantLib](https://www.quantlib.org/). It provides building blocks for term structures, cash flows and instruments so
+you can prototype analytic valuations.
 
 ## Features
 

@@ -25,8 +25,8 @@ from QuantLib import (
 from dataclasses import FrozenInstanceError
 from operator import eq, ne
 
-from pricingengine import CURRENCIES
 from pricingengine.instruments.common import (
+    CURRENCIES,
     AmortizedFixedLeg,
     AmortizedFloatingLeg,
     AmortizedSwapLeg,

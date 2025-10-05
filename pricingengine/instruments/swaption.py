@@ -31,8 +31,8 @@ from QuantLib import (
 from dataclasses import dataclass
 from typing import Optional, Sequence
 
+from pricingengine.instruments import InterestRateSwap
 from pricingengine.instruments.common import Instrument
-from pricingengine.instruments.interest_rate_swap import InterestRateSwap
 
 
 @dataclass(frozen=True, kw_only=True)
