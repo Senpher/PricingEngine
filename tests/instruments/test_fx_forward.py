@@ -1,538 +1,535 @@
-from __future__ import annotations
-
 import math
-
 import pytest
 from QuantLib import (
-    Actual365Fixed,
-    Annual,
-    Continuous,
+    Actual360,
     Date,
-    Days,
     FlatForward,
-    January,
-    July,
-    Months,
-    Period,
-    QuoteHandle,
-    RelinkableQuoteHandle,
-    RelinkableYieldTermStructureHandle,
-    SavedSettings,
-    Settings,
     SimpleQuote,
+    QuoteHandle,
     YieldTermStructureHandle,
-    ZeroSpreadedTermStructure,
+    ZeroCurve,
+    Period,
+    TARGET,
+    Settings,
+    SavedSettings,
+    ModifiedFollowing,
+    Days,
 )
 
-from pricingengine.instruments.fx_forward import FXForward
-from pricingengine.termstructures.curve_nodes import CurveNodes
+from pricingengine.instruments.fx_forward import FxForward
 
 
-def _flat_curve(rate: float, as_of: Date) -> RelinkableYieldTermStructureHandle:
-    handle = RelinkableYieldTermStructureHandle()
-    handle.linkTo(FlatForward(as_of, rate, Actual365Fixed()))
-    return handle
+# ---------------------------
+# Helpers (local to tests)
+# ---------------------------
 
 
-@pytest.fixture
-def valuation_date() -> Date:
-    return Date(15, January, 2024)
-
-
-@pytest.fixture(autouse=True)
-def _apply_saved_settings(valuation_date: Date):
-    with SavedSettings():
-        Settings.instance().evaluationDate = valuation_date
-        yield
-
-
-@pytest.fixture
-def maturity() -> Date:
-    return Date(15, July, 2024)
-
-
-@pytest.fixture
-def notional() -> float:
-    return 1_000_000.0
-
-
-@pytest.fixture
-def spot_handle() -> RelinkableQuoteHandle:
-    return RelinkableQuoteHandle(SimpleQuote(1.10))
-
-
-@pytest.fixture
-def forward_handle() -> RelinkableQuoteHandle:
-    return RelinkableQuoteHandle(SimpleQuote(1.11))
-
-
-@pytest.fixture
-def domestic_curve(valuation_date: Date) -> RelinkableYieldTermStructureHandle:
-    return _flat_curve(0.025, valuation_date)
-
-
-@pytest.fixture
-def foreign_curve(valuation_date: Date) -> RelinkableYieldTermStructureHandle:
-    return _flat_curve(0.01, valuation_date)
-
-
-@pytest.fixture
-def fx_forward_long(
-    maturity: Date,
-    notional: float,
-    forward_handle: RelinkableQuoteHandle,
-    spot_handle: RelinkableQuoteHandle,
-    domestic_curve: RelinkableYieldTermStructureHandle,
-    foreign_curve: RelinkableYieldTermStructureHandle,
-) -> FXForward:
-    return FXForward(
-        maturity=maturity,
-        notional=notional,
-        forward_quote=forward_handle,
-        spot_quote=spot_handle,
-        domestic_curve=domestic_curve,
-        foreign_curve=foreign_curve,
-        is_long_foreign=True,
+def _points_from_curves(
+    *,
+    s: float,
+    disc_dom: YieldTermStructureHandle,
+    disc_for: YieldTermStructureHandle,
+    as_of: Date,
+    tenors,
+    calendar,  # NEW
+    convention=ModifiedFollowing,  # NEW
+    end_of_month=False,  # NEW
+    fixing_days=0,  # NEW: T+0 in this test
+):
+    """PRICE-side points (F - S) at pillar FAR dates, consistent with helpers."""
+    points = []
+    # SPOT=ASOF when fixing_days=0; kept for generality
+    spot_date = calendar.advance(
+        as_of, Period(fixing_days, Days), convention, end_of_month
     )
+    for ten in tenors:
+        t = ten if isinstance(ten, Period) else Period(str(ten))
+        far = calendar.advance(spot_date, t, convention, end_of_month)
+        f = s * float(disc_for.discount(far)) / float(disc_dom.discount(far))
+        points.append(f - s)
+    return points
+
+
+# ---------------------------
+# Fixtures
+# ---------------------------
 
 
 @pytest.fixture
-def fx_forward_short(
-    maturity: Date,
-    notional: float,
-    forward_handle: RelinkableQuoteHandle,
-    spot_handle: RelinkableQuoteHandle,
-    domestic_curve: RelinkableYieldTermStructureHandle,
-    foreign_curve: RelinkableYieldTermStructureHandle,
-) -> FXForward:
-    return FXForward(
-        maturity=maturity,
-        notional=notional,
-        forward_quote=forward_handle,
-        spot_quote=spot_handle,
-        domestic_curve=domestic_curve,
-        foreign_curve=foreign_curve,
-        is_long_foreign=False,
-    )
+def as_of():
+    return Date(5, 5, 2024)
 
 
 @pytest.fixture
-def domestic_nodes(valuation_date: Date, maturity: Date) -> CurveNodes:
-    dates = (
-        valuation_date + Period(3, Months),
-        valuation_date + Period(5, Months),
-        maturity,
-    )
-    zeros = (0.024, 0.0245, 0.025)
-    return CurveNodes.from_zeros(
-        as_of=valuation_date,
-        dates=dates,
-        zeros=zeros,
-        day_counter=Actual365Fixed(),
-    )
+def calendar():
+    return TARGET()
 
 
 @pytest.fixture
-def foreign_nodes(valuation_date: Date, maturity: Date) -> CurveNodes:
-    dates = (
-        valuation_date + Period(3, Months),
-        valuation_date + Period(5, Months),
-        maturity,
-    )
-    zeros = (0.009, 0.0095, 0.01)
-    return CurveNodes.from_zeros(
-        as_of=valuation_date,
-        dates=dates,
-        zeros=zeros,
-        day_counter=Actual365Fixed(),
-    )
+def dc():
+    return Actual360()
 
 
-# =======================
-# A. Construction & validation
-# =======================
+@pytest.fixture
+def maturity_9m(as_of):
+    return as_of + Period("9M")
 
 
-class TestA_ConstructionAndValidation:
-    def test_requires_non_zero_notional(
-        self,
-        maturity: Date,
-        forward_handle: RelinkableQuoteHandle,
-        spot_handle: RelinkableQuoteHandle,
-        domestic_curve: RelinkableYieldTermStructureHandle,
-        foreign_curve: RelinkableYieldTermStructureHandle,
-    ) -> None:
-        with pytest.raises(ValueError, match="notional must be non-zero"):
-            FXForward(
-                maturity=maturity,
-                notional=0.0,
-                forward_quote=forward_handle,
-                spot_quote=spot_handle,
-                domestic_curve=domestic_curve,
-                foreign_curve=foreign_curve,
-            )
-
-    def test_invalid_settlement_flag_rejected(
-        self,
-        maturity: Date,
-        notional: float,
-        forward_handle: RelinkableQuoteHandle,
-        spot_handle: RelinkableQuoteHandle,
-        domestic_curve: RelinkableYieldTermStructureHandle,
-        foreign_curve: RelinkableYieldTermStructureHandle,
-    ) -> None:
-        with pytest.raises(ValueError, match="settlement must be"):
-            FXForward(
-                maturity=maturity,
-                notional=notional,
-                forward_quote=forward_handle,
-                spot_quote=spot_handle,
-                domestic_curve=domestic_curve,
-                foreign_curve=foreign_curve,
-                settlement="delivery",
-            )
-
-    def test_requires_linked_curves(
-        self,
-        maturity: Date,
-        notional: float,
-        forward_handle: RelinkableQuoteHandle,
-        spot_handle: RelinkableQuoteHandle,
-        domestic_curve: RelinkableYieldTermStructureHandle,
-    ) -> None:
-        unlinked = RelinkableYieldTermStructureHandle()
-        with pytest.raises(ValueError, match="domestic_curve must be linked"):
-            FXForward(
-                maturity=maturity,
-                notional=notional,
-                forward_quote=forward_handle,
-                spot_quote=spot_handle,
-                domestic_curve=unlinked,
-                foreign_curve=domestic_curve,
-            )
-
-    def test_numeric_inputs_wrapped_into_handles(
-        self,
-        maturity: Date,
-        notional: float,
-        domestic_nodes: CurveNodes,
-        foreign_nodes: CurveNodes,
-    ) -> None:
-        fx = FXForward(
-            maturity=maturity,
-            notional=notional,
-            forward_quote=1.125,
-            spot_quote=1.10,
-            domestic_curve=domestic_nodes,
-            foreign_curve=foreign_nodes,
-        )
-        assert isinstance(fx.forward_quote, QuoteHandle)
-        assert isinstance(fx.spot_quote, QuoteHandle)
-        assert isinstance(fx.domestic_curve, YieldTermStructureHandle)
-        assert isinstance(fx.foreign_curve, YieldTermStructureHandle)
-
-    def test_from_nodes_matches_handle_constructor(
-        self,
-        maturity: Date,
-        notional: float,
-        domestic_nodes: CurveNodes,
-        foreign_nodes: CurveNodes,
-    ) -> None:
-        fx_from_nodes = FXForward.from_nodes(
-            maturity=maturity,
-            notional=notional,
-            forward_rate=1.11,
-            spot=1.10,
-            domestic_nodes=domestic_nodes,
-            foreign_nodes=foreign_nodes,
-        )
-
-        fx_direct = FXForward(
-            maturity=maturity,
-            notional=notional,
-            forward_quote=1.11,
-            spot_quote=1.10,
-            domestic_curve=domestic_nodes.to_handle(),
-            foreign_curve=foreign_nodes.to_handle(),
-        )
-
-        assert math.isclose(
-            fx_from_nodes.mark_to_market(),
-            fx_direct.mark_to_market(),
-            rel_tol=1e-12,
-        )
+@pytest.fixture
+def maturity_2y(as_of):
+    return as_of + Period("2Y")
 
 
-# =======================
-# B. Lifecycle & properties
-# =======================
+@pytest.fixture
+def spot_handle():
+    # 1.10 PRICE per 1 BASE (e.g., 1.10 USD per EUR)
+    return QuoteHandle(SimpleQuote(1.10))
 
 
-class TestB_LifecycleAndProperties:
-    def test_valuation_date_tracks_settings(self, fx_forward_long: FXForward, valuation_date: Date) -> None:
-        future_date = valuation_date + Period(10, Days)
-        with SavedSettings():
-            Settings.instance().evaluationDate = future_date
-            fx = fx_forward_long.with_forward(fx_forward_long.forward_rate)
-            assert fx.valuation_date == future_date
-
-    def test_is_expired_flag(self, fx_forward_long: FXForward, maturity: Date) -> None:
-        assert not fx_forward_long.is_expired
-        with SavedSettings():
-            Settings.instance().evaluationDate = maturity - Period(1, Days)
-            pre_maturity = FXForward(
-                maturity=maturity,
-                notional=fx_forward_long.notional,
-                forward_quote=fx_forward_long.forward_quote,
-                spot_quote=fx_forward_long.spot_quote,
-                domestic_curve=fx_forward_long.domestic_curve,
-                foreign_curve=fx_forward_long.foreign_curve,
-            )
-            assert not pre_maturity.is_expired
-
-            Settings.instance().evaluationDate = maturity
-            on_maturity = FXForward(
-                maturity=maturity,
-                notional=fx_forward_long.notional,
-                forward_quote=fx_forward_long.forward_quote,
-                spot_quote=fx_forward_long.spot_quote,
-                domestic_curve=fx_forward_long.domestic_curve,
-                foreign_curve=fx_forward_long.foreign_curve,
-            )
-            assert on_maturity.is_expired
-
-            Settings.instance().evaluationDate = maturity + Period(1, Days)
-            assert FXForward(
-                maturity=maturity,
-                notional=fx_forward_long.notional,
-                forward_quote=fx_forward_long.forward_quote,
-                spot_quote=fx_forward_long.spot_quote,
-                domestic_curve=fx_forward_long.domestic_curve,
-                foreign_curve=fx_forward_long.foreign_curve,
-            ).is_expired
-
-    def test_direction_flag_controls_sign(self, fx_forward_long: FXForward, fx_forward_short: FXForward) -> None:
-        pv_long = fx_forward_long.mark_to_market()
-        pv_short = fx_forward_short.mark_to_market()
-        assert math.isclose(pv_long, -pv_short, rel_tol=1e-12)
-
-        exposure_long = fx_forward_long.currency_exposure()
-        exposure_short = fx_forward_short.currency_exposure()
-        assert exposure_long["foreign"] == -exposure_short["foreign"]
-        assert exposure_long["domestic"] == -exposure_short["domestic"]
-
-    def test_forward_points_consistency(self, fx_forward_long: FXForward) -> None:
-        forward_points = fx_forward_long.forward_points()
-        assert math.isclose(
-            forward_points,
-            fx_forward_long.par_forward() - fx_forward_long.spot,
-            rel_tol=1e-12,
-        )
-
-    def test_currency_exposure_matches_notional(self, fx_forward_long: FXForward) -> None:
-        exposure = fx_forward_long.currency_exposure()
-        assert exposure["foreign"] == pytest.approx(fx_forward_long.notional)
-        assert exposure["domestic"] == pytest.approx(-fx_forward_long.notional * fx_forward_long.forward_rate)
+@pytest.fixture
+def empty_spot_handle():
+    return QuoteHandle()
 
 
-# =======================
-# C. Mark-to-market & pricing dynamics
-# =======================
+@pytest.fixture
+def flat_domestic(as_of, dc):
+    """Flat discount curve (domestic/PRICE ccy) at 2.0%."""
+    return YieldTermStructureHandle(FlatForward(as_of, 0.02, dc))
 
 
-class TestC_MarkToMarketAndPricing:
-    def test_mark_to_market_matches_interest_rate_parity(self, fx_forward_long: FXForward) -> None:
-        fx = fx_forward_long
-        df_dom = fx.domestic_discount_factor()
-        df_for = fx.foreign_discount_factor()
-        fair_forward = fx.spot * df_for / df_dom
-        expected = fx.direction * fx.notional * (fair_forward - fx.forward_rate) * df_dom
-        assert math.isclose(fx.mark_to_market(), expected, rel_tol=1e-12)
-        assert math.isclose(fx.par_forward(), fair_forward, rel_tol=1e-12)
-
-    def test_mtm_zero_when_forward_at_par(self, fx_forward_long: FXForward) -> None:
-        par_rate = fx_forward_long.par_forward()
-        par_forward = fx_forward_long.with_forward(par_rate)
-        assert math.isclose(par_forward.mark_to_market(), 0.0, abs_tol=1e-12)
-
-    def test_mtm_zero_when_expired(self, fx_forward_long: FXForward, maturity: Date) -> None:
-        with SavedSettings():
-            Settings.instance().evaluationDate = maturity + Period(1, Days)
-            assert (
-                FXForward(
-                    maturity=maturity,
-                    notional=fx_forward_long.notional,
-                    forward_quote=fx_forward_long.forward_quote,
-                    spot_quote=fx_forward_long.spot_quote,
-                    domestic_curve=fx_forward_long.domestic_curve,
-                    foreign_curve=fx_forward_long.foreign_curve,
-                ).mark_to_market()
-                == 0.0
-            )
-
-    def test_relinking_handles_updates_value(self, fx_forward_long: FXForward) -> None:
-        base = fx_forward_long.mark_to_market()
-
-        fx_forward_long.spot_quote.linkTo(SimpleQuote(fx_forward_long.spot + 0.01))
-        bumped_spot = fx_forward_long.mark_to_market()
-        assert not math.isclose(base, bumped_spot)
-
-        fx_forward_long.spot_quote.linkTo(SimpleQuote(fx_forward_long.spot))
-        new_curve = FlatForward(fx_forward_long.valuation_date, 0.03, Actual365Fixed())
-        fx_forward_long.domestic_curve.linkTo(new_curve)
-        bumped_curve = fx_forward_long.mark_to_market()
-        assert not math.isclose(base, bumped_curve)
+@pytest.fixture
+def flat_foreign(as_of, dc):
+    """Flat discount curve (foreign/BASE ccy) at 1.0%."""
+    return YieldTermStructureHandle(FlatForward(as_of, 0.01, dc))
 
 
-# =======================
-# D. Sensitivities & greeks
-# =======================
+@pytest.fixture
+def finite_domestic(as_of, dc):
+    """Finite-horizon domestic curve (ref=asof, max=asof+6M)."""
+    d0 = as_of
+    d1 = as_of + Period("6M")
+    return YieldTermStructureHandle(ZeroCurve((d0, d1), (0.02, 0.02), dc))
 
 
-class TestD_SensitivitiesAndGreeks:
-    def test_spot_and_strike_deltas(self, fx_forward_long: FXForward) -> None:
-        df_dom = fx_forward_long.domestic_discount_factor()
-        df_for = fx_forward_long.foreign_discount_factor()
-        assert math.isclose(
-            fx_forward_long.spot_delta(),
-            fx_forward_long.direction * fx_forward_long.notional * df_for,
-            rel_tol=1e-12,
-        )
-        assert math.isclose(
-            fx_forward_long.strike_delta(),
-            -fx_forward_long.direction * fx_forward_long.notional * df_dom,
-            rel_tol=1e-12,
-        )
-
-    def test_deltas_zero_when_expired(self, fx_forward_long: FXForward, maturity: Date) -> None:
-        with SavedSettings():
-            Settings.instance().evaluationDate = maturity + Period(1, Days)
-            expired = FXForward(
-                maturity=maturity,
-                notional=fx_forward_long.notional,
-                forward_quote=fx_forward_long.forward_quote,
-                spot_quote=fx_forward_long.spot_quote,
-                domestic_curve=fx_forward_long.domestic_curve,
-                foreign_curve=fx_forward_long.foreign_curve,
-            )
-            assert expired.spot_delta() == 0.0
-            assert expired.strike_delta() == 0.0
-
-    def test_ir01_domestic_matches_finite_difference(self, fx_forward_long: FXForward) -> None:
-        base = fx_forward_long.mark_to_market()
-
-        spread = QuoteHandle(SimpleQuote(1e-4))
-        dom_link = fx_forward_long.domestic_curve.currentLink()
-        bumped_dom = ZeroSpreadedTermStructure(
-            fx_forward_long.domestic_curve,
-            spread,
-            Continuous,
-            Annual,
-            dom_link.dayCounter(),
-        )
-        bumped_df = bumped_dom.discount(fx_forward_long.maturity)
-        fair_forward_bumped = fx_forward_long.spot * fx_forward_long.foreign_discount_factor() / bumped_df
-        pv_bumped = (
-            fx_forward_long.direction
-            * fx_forward_long.notional
-            * (fair_forward_bumped - fx_forward_long.forward_rate)
-            * bumped_df
-        )
-        expected = (pv_bumped - base) / 1.0
-        assert math.isclose(fx_forward_long.ir01_domestic(), expected, rel_tol=1e-10)
-
-    def test_ir01_foreign_matches_finite_difference(self, fx_forward_long: FXForward) -> None:
-        base = fx_forward_long.mark_to_market()
-
-        spread = QuoteHandle(SimpleQuote(1e-4))
-        for_link = fx_forward_long.foreign_curve.currentLink()
-        bumped_for = ZeroSpreadedTermStructure(
-            fx_forward_long.foreign_curve,
-            spread,
-            Continuous,
-            Annual,
-            for_link.dayCounter(),
-        )
-        df_for_bumped = bumped_for.discount(fx_forward_long.maturity)
-        fair_forward_bumped = fx_forward_long.spot * df_for_bumped / fx_forward_long.domestic_discount_factor()
-        pv_bumped = (
-            fx_forward_long.direction
-            * fx_forward_long.notional
-            * (fair_forward_bumped - fx_forward_long.forward_rate)
-            * fx_forward_long.domestic_discount_factor()
-        )
-        expected = (pv_bumped - base) / 1.0
-        assert math.isclose(fx_forward_long.ir01_foreign(), expected, rel_tol=1e-10)
+@pytest.fixture
+def base_ccy():
+    return "EUR"
 
 
-# =======================
-# E. Cash-flows & reporting utilities
-# =======================
+@pytest.fixture
+def price_ccy():
+    return "USD"
 
 
-class TestE_CashflowsAndReporting:
-    def test_cashflow_table_structure(self, fx_forward_long: FXForward) -> None:
-        table = fx_forward_long.cashflow_table()
-        assert list(table.columns) == [
-            "ForeignFlow",
-            "DomesticFlow",
-            "DF(domestic)",
-            "DF(foreign)",
-            "Forward(market)",
-            "Forward(strike)",
-            "PV",
+@pytest.fixture
+def make_fx(
+    as_of, spot_handle, flat_domestic, flat_foreign, base_ccy, price_ccy, dc, calendar
+):
+    def _make(
+        *,
+        nominal=100_000_000,
+        forward_price=1.11,
+        maturity=None,
+        base_currency=base_ccy,
+        price_currency=price_ccy,
+        long_base=True,
+        spot=spot_handle,
+        disc_d=flat_domestic,
+        foreign_for_points=flat_foreign,
+        custom_points=None,
+        tenors_for_points=(Period("1Y"),),
+        fixing_days=0,  # T+0 in c1
+        day_counter=dc,
+    ):
+        # Tenors list
+        tenors = [
+            Period(t) if not isinstance(t, Period) else t for t in tenors_for_points
         ]
-        assert table.index[0] == fx_forward_long.maturity.ISO()
 
-    def test_cash_settlement_flag_has_no_valuation_effect(self, fx_forward_long: FXForward) -> None:
-        cash_settled = FXForward(
-            maturity=fx_forward_long.maturity,
-            notional=fx_forward_long.notional,
-            forward_quote=fx_forward_long.forward_quote,
-            spot_quote=fx_forward_long.spot_quote,
-            domestic_curve=fx_forward_long.domestic_curve,
-            foreign_curve=fx_forward_long.foreign_curve,
-            settlement="cash",
+        # Build PRICE-side points only if we can actually read spot and curves;
+        # otherwise, fall back to a benign placeholder so constructor can run
+        # and raise its own validation errors (as tests expect).
+        if custom_points is None:
+            try:
+                s = float(spot.value())  # may raise if handle is empty
+                pts = _points_from_curves(
+                    s=s,
+                    disc_dom=disc_d,
+                    disc_for=foreign_for_points,
+                    as_of=as_of,
+                    tenors=tenors,
+                    calendar=calendar,
+                    fixing_days=fixing_days,
+                    convention=ModifiedFollowing,
+                    end_of_month=False,
+                )
+                fx_pts_curve = [
+                    {"tenor": ten, "points": p} for ten, p in zip(tenors, pts)
+                ]
+            except Exception:
+                # Safe fallback: a single near-dated zero-point that won't
+                # query beyond finite curves; lets the constructor perform
+                # its own validation and raise the expected ValueError.
+                fx_pts_curve = [{"tenor": Period("1M"), "points": 0.0}]
+        else:
+            fx_pts_curve = custom_points
+
+        # If maturity not given and single tenor, align to the helper’s far date
+        if maturity is None and len(tenors) == 1:
+            spot_date = calendar.advance(
+                as_of, Period(fixing_days, Days), ModifiedFollowing, False
+            )
+            maturity = calendar.advance(spot_date, tenors[0], ModifiedFollowing, False)
+        elif maturity is None:
+            maturity = as_of + Period("1Y")
+
+        return FxForward(
+            nominal=nominal,
+            forward_price=forward_price,
+            maturity=maturity,
+            base_currency=base_currency,
+            price_currency=price_currency,
+            long_base=long_base,
+            spot=spot,
+            discount_domestic=disc_d,
+            fx_fwd_pts_curve=fx_pts_curve,
+            fixing_days=fixing_days,
+            day_counter=day_counter,
+            calendar=calendar,
+            convention=ModifiedFollowing,
+            end_of_month=False,
         )
-        assert math.isclose(
-            cash_settled.mark_to_market(),
-            fx_forward_long.mark_to_market(),
-            rel_tol=1e-12,
-        )
 
-    def test_as_dict_contains_serializable_snapshot(self, fx_forward_long: FXForward) -> None:
-        payload = fx_forward_long.as_dict()
-        assert payload["valuation_date"] == fx_forward_long.valuation_date.ISO()
-        assert payload["maturity"] == fx_forward_long.maturity.ISO()
-        assert payload["notional"] == fx_forward_long.notional
-        assert payload["forward_rate"] == fx_forward_long.forward_rate
-        assert payload["spot"] == fx_forward_long.spot
-        assert payload["is_long_foreign"] is True
-        assert payload["settlement"] == fx_forward_long.settlement
+    return _make
 
 
-# =======================
-# F. Scenario helpers
-# =======================
+# ---------------------------------------
+# A. Construction & invariants
+# ---------------------------------------
 
 
-class TestF_ScenarioUtilities:
-    def test_with_spot_returns_new_instance(self, fx_forward_long: FXForward) -> None:
-        bumped = fx_forward_long.with_spot(fx_forward_long.spot + 0.05)
-        assert bumped is not fx_forward_long
-        assert bumped.spot == fx_forward_long.spot + 0.05
-        assert bumped.forward_rate == fx_forward_long.forward_rate
+class TestA_Construct:
+    def test_a1_positive_fields(self, as_of, make_fx):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            fwd = make_fx(nominal=1_000_000, forward_price=1.05)
+            assert fwd.nominal == 1_000_000 and fwd.forward_price == 1.05
 
-    def test_with_forward_accepts_handle_or_number(self, fx_forward_long: FXForward) -> None:
-        new_forward = fx_forward_long.with_forward(1.15)
-        assert math.isclose(new_forward.forward_rate, 1.15)
+    @pytest.mark.parametrize("bad_nom", [0.0, -1.0])
+    def test_a2_bad_nominal(self, as_of, make_fx, bad_nom):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            with pytest.raises(ValueError, match="nominal.*positive"):
+                make_fx(nominal=bad_nom)
 
-        handle = RelinkableQuoteHandle(SimpleQuote(1.20))
-        new_forward_handle = fx_forward_long.with_forward(handle)
-        assert new_forward_handle.forward_quote is handle
+    @pytest.mark.parametrize("bad_k", [0.0, -1.0])
+    def test_a3_bad_forward_price(self, as_of, make_fx, bad_k):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            with pytest.raises(ValueError, match="forward_price.*positive"):
+                make_fx(forward_price=bad_k)
 
-    def test_with_notional_scales_currency_exposure(self, fx_forward_long: FXForward) -> None:
-        scaled = fx_forward_long.with_notional(2 * fx_forward_long.notional)
-        exposure = scaled.currency_exposure()
-        assert exposure["foreign"] == pytest.approx(2 * fx_forward_long.notional)
-        assert exposure["domestic"] == pytest.approx(-2 * fx_forward_long.notional * fx_forward_long.forward_rate)
+    def test_a4_currency_codes(self, as_of, make_fx):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            with pytest.raises(ValueError, match="Unknown currency code"):
+                make_fx(base_currency="ZZZ")
+            with pytest.raises(ValueError, match="Unknown currency code"):
+                make_fx(price_currency="ZZZ")
+            with pytest.raises(ValueError, match="must differ"):
+                make_fx(base_currency="EUR", price_currency="EUR")
+
+    def test_a5_spot_empty(self, as_of, make_fx, empty_spot_handle):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            with pytest.raises(ValueError, match="spot .* not set or invalid"):
+                make_fx(spot=empty_spot_handle)
+
+    def test_a6_points_curve_empty(
+        self, as_of, spot_handle, flat_domestic, base_ccy, price_ccy
+    ):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            with pytest.raises(
+                ValueError, match="fx_fwd_pts_curve must contain at least one"
+            ):
+                FxForward(
+                    nominal=1_000_000,
+                    forward_price=1.10,
+                    maturity=as_of + Period("6M"),
+                    base_currency=base_ccy,
+                    price_currency=price_ccy,
+                    long_base=True,
+                    spot=spot_handle,
+                    discount_domestic=flat_domestic,
+                    fx_fwd_pts_curve=[],  # empty -> error
+                )
+
+    def test_a7_curve_out_of_range_no_extrap_domestic_only(
+        self, as_of, make_fx, finite_domestic, maturity_9m
+    ):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            # domestic curve stops at 6M; class should reject 9M
+            with pytest.raises(
+                ValueError, match="discount_domestic .* extrapolation disabled"
+            ):
+                make_fx(disc_d=finite_domestic, maturity=maturity_9m)
+
+
+# ---------------------------------------
+# B. Timeline semantics
+# ---------------------------------------
+
+
+class TestB_Timeline:
+    def test_b1_valuation_date_mirrors_settings(self, as_of, make_fx):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            fwd = make_fx()
+            assert fwd.valuation_date == as_of
+            Settings.instance().evaluationDate = as_of + Period("1D")
+            assert fwd.valuation_date == as_of + Period("1D")
+
+    @pytest.mark.parametrize(
+        "dt, expected",
+        [
+            ("-1D", False),  # before maturity
+            ("0D", False),  # on maturity (not expired)
+            ("+1D", True),  # after maturity
+        ],
+    )
+    def test_b2_is_expired_logic(self, as_of, make_fx, dt, expected):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            maturity = as_of
+            fwd = make_fx(maturity=maturity)
+            Settings.instance().evaluationDate = as_of + Period(dt)
+            assert fwd.is_expired == expected
+
+
+# ---------------------------------------
+# C. Fair forward (no-arbitrage)
+# ---------------------------------------
+
+
+class TestC_FairForward:
+    def test_c1_flat_parity(
+        self, as_of, make_fx, spot_handle, flat_domestic, flat_foreign, dc
+    ):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            # Build points from the two flat curves so the bootstrap is consistent
+            fwd = make_fx(
+                disc_d=flat_domestic,
+                foreign_for_points=flat_foreign,
+                tenors_for_points=(Period("1Y"),),
+                fixing_days=0,
+                day_counter=dc,
+            )
+            s = float(spot_handle.value())
+            d_fd = float(flat_domestic.discount(fwd.maturity))
+            d_ff = float(flat_foreign.discount(fwd.maturity))
+            assert (
+                pytest.approx(fwd.fair_forward(), rel=1e-12, abs=1e-12)
+                == s * d_ff / d_fd
+            )
+
+    def test_c2_equal_curves_imply_f_equals_s(self, as_of, dc, spot_handle):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            s = float(spot_handle.value())
+            h = YieldTermStructureHandle(FlatForward(as_of, 0.015, dc))
+            # points zero -> DFf == DFd in effect
+            fx_pts_curve = [{"tenor": Period("1Y"), "points": 0.0}]
+            fwd = FxForward(
+                nominal=10_000_000,
+                forward_price=s,
+                maturity=as_of + Period("1Y"),
+                base_currency="EUR",
+                price_currency="USD",
+                long_base=True,
+                spot=spot_handle,
+                discount_domestic=h,
+                fx_fwd_pts_curve=fx_pts_curve,
+            )
+            assert pytest.approx(fwd.fair_forward(), rel=1e-12, abs=1e-12) == s
+
+
+# ---------------------------------------
+# D. NPV symmetry & signs
+# ---------------------------------------
+
+
+class TestD_NPV:
+    def test_d1_par_forward_zero_pv(self, as_of, make_fx):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            fwd = make_fx()
+            k_par = fwd.fair_forward()
+            fwd_par = fwd.with_forward(k_par)
+            assert pytest.approx(fwd_par.npv(), abs=1e-10) == 0.0
+
+    @pytest.mark.parametrize("long_base, sign", [(True, +1.0), (False, -1.0)])
+    def test_d2_in_the_money_sign(self, as_of, make_fx, long_base, sign):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            fwd = make_fx(long_base=long_base)
+            f = fwd.fair_forward()
+            deep_itm = f - 0.05
+            pv = fwd.with_forward(deep_itm).npv()
+            assert math.copysign(1.0, pv) == sign
+
+    def test_d3_breakdown_keys_and_values(self, as_of, make_fx):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            fwd = make_fx()
+            out = fwd.npv(breakdown=True)
+            for k in (
+                "npv",
+                "discount_factor",
+                "market_forward",
+                "strike",
+                "notional",
+                "base_currency",
+                "price_currency",
+            ):
+                assert k in out
+            d_fd = float(fwd.discount_domestic.discount(fwd.maturity))
+            fm = fwd.fair_forward()
+            expected = fwd.nominal * d_fd * (fm - fwd.forward_price)
+            assert pytest.approx(out["npv"], rel=1e-12, abs=1e-10) == expected
+
+    def test_d4_expired_returns_zero(self, as_of, make_fx):
+        with SavedSettings():
+            maturity = as_of + Period("3M")
+            Settings.instance().evaluationDate = maturity + Period("1D")
+            fwd = make_fx(maturity=maturity)
+            assert fwd.is_expired is True
+            assert fwd.npv() == 0.0
+            out = fwd.npv(breakdown=True)
+            assert out["npv"] == 0.0 and out["market_forward"] is None
+
+
+# ---------------------------------------
+# E. Handle & curve coverage semantics
+# ---------------------------------------
+
+
+class TestE_HandlesCoverage:
+    def test_e1_out_of_range_domestic_only(self, as_of, finite_domestic, spot_handle):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            maturity = as_of + Period("9M")  # beyond finite (6M)
+            fx_pts_curve = [
+                {"tenor": Period("6M"), "points": 0.0}
+            ]  # any points; foreign curve extrapolates internally
+            with pytest.raises(
+                ValueError, match="discount_domestic .* extrapolation disabled"
+            ):
+                FxForward(
+                    nominal=1_000_000,
+                    forward_price=1.1,
+                    maturity=maturity,
+                    base_currency="EUR",
+                    price_currency="USD",
+                    long_base=True,
+                    spot=spot_handle,
+                    discount_domestic=finite_domestic,
+                    fx_fwd_pts_curve=fx_pts_curve,
+                )
+
+    def test_e2_helpers_required(self, as_of, spot_handle, flat_domestic):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            with pytest.raises(
+                ValueError, match="fx_fwd_pts_curve must contain at least one"
+            ):
+                FxForward(
+                    nominal=1_000_000,
+                    forward_price=1.1,
+                    maturity=as_of + Period("6M"),
+                    base_currency="EUR",
+                    price_currency="USD",
+                    long_base=True,
+                    spot=spot_handle,
+                    discount_domestic=flat_domestic,
+                    fx_fwd_pts_curve=[],
+                )
+
+    def test_e3_single_helper_is_ok_and_extrapolates(
+        self, as_of, spot_handle, flat_domestic
+    ):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            # Provide only a 6M point, then price a 2Y maturity.
+            fx_pts_curve = [{"tenor": Period("6M"), "points": 0.0}]
+            fwd = FxForward(
+                nominal=1_000_000,
+                forward_price=1.1,
+                maturity=as_of + Period("2Y"),
+                base_currency="EUR",
+                price_currency="USD",
+                long_base=True,
+                spot=spot_handle,
+                discount_domestic=flat_domestic,
+                fx_fwd_pts_curve=fx_pts_curve,
+            )
+            assert isinstance(fwd, FxForward)
+
+
+# ---------------------------------------
+# F. Immutability & kw-only API
+# ---------------------------------------
+
+
+class TestF_DataclassTraits:
+    def test_f1_frozen(self, as_of, make_fx):
+        import dataclasses
+        from dataclasses import FrozenInstanceError
+
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            fwd = make_fx()
+            assert dataclasses.is_dataclass(fwd)
+            assert type(fwd).__dataclass_params__.frozen is True
+            with pytest.raises(FrozenInstanceError):
+                fwd.forward_price = 9.99
+
+    def test_f2_kw_only(self, as_of, spot_handle, flat_domestic):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            with pytest.raises(TypeError):
+                FxForward(  # type: ignore[misc]
+                    100_000,
+                    1.1,
+                    as_of + Period("1Y"),
+                    "EUR",
+                    "USD",
+                    True,
+                    spot_handle,
+                    flat_domestic,
+                    [{"tenor": Period("1Y"), "points": 0.0}],
+                )
+
+
+# ---------------------------------------
+# G. Convenience helpers
+# ---------------------------------------
+
+
+class TestG_Convenience:
+    def test_g1_with_forward(self, as_of, make_fx):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            fwd = make_fx(forward_price=1.05)
+            fwd2 = fwd.with_forward(1.07)
+            assert fwd is not fwd2 and fwd2.forward_price == 1.07
+
+    @pytest.mark.parametrize("bad", [0.0, -0.1])
+    def test_g2_with_forward_guards(self, as_of, make_fx, bad):
+        with SavedSettings():
+            Settings.instance().evaluationDate = as_of
+            fwd = make_fx()
+            with pytest.raises(ValueError, match="forward_price.*positive"):
+                fwd.with_forward(bad)
