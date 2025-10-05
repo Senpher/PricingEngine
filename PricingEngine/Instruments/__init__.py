@@ -1,5 +1,6 @@
 """Tradable financial Instruments."""
 
+from .cross_currency_swap import CrossCurrencySwap
 from .equity_option import (
     AmericanVanillaOption,
     BermudanVanillaOption,
@@ -21,6 +22,7 @@ __all__ = [
     "BermudanVanillaOption",
     "EuropeanDigitalOption",
     "EuropeanVanillaOption",
+    "CrossCurrencySwap",
     "FXAmericanVanillaOption",
     "FXBermudanVanillaOption",
     "FXEuropeanDigitalOption",
