@@ -16,7 +16,7 @@ from QuantLib import (
     Days,
 )
 
-from pricingengine.instruments.fx_forward import FxForward
+from pricingengine.instruments import FxForward
 
 
 # ---------------------------
@@ -39,9 +39,7 @@ def _points_from_curves(
     """PRICE-side points (F - S) at pillar FAR dates, consistent with helpers."""
     points = []
     # SPOT=ASOF when fixing_days=0; kept for generality
-    spot_date = calendar.advance(
-        as_of, Period(fixing_days, Days), convention, end_of_month
-    )
+    spot_date = calendar.advance(as_of, Period(fixing_days, Days), convention, end_of_month)
     for ten in tenors:
         t = ten if isinstance(ten, Period) else Period(str(ten))
         far = calendar.advance(spot_date, t, convention, end_of_month)
@@ -122,9 +120,7 @@ def price_ccy():
 
 
 @pytest.fixture
-def make_fx(
-    as_of, spot_handle, flat_domestic, flat_foreign, base_ccy, price_ccy, dc, calendar
-):
+def make_fx(as_of, spot_handle, flat_domestic, flat_foreign, base_ccy, price_ccy, dc, calendar):
     def _make(
         *,
         nominal=100_000_000,
@@ -142,9 +138,7 @@ def make_fx(
         day_counter=dc,
     ):
         # Tenors list
-        tenors = [
-            Period(t) if not isinstance(t, Period) else t for t in tenors_for_points
-        ]
+        tenors = [Period(t) if not isinstance(t, Period) else t for t in tenors_for_points]
 
         # Build PRICE-side points only if we can actually read spot and curves;
         # otherwise, fall back to a benign placeholder so constructor can run
@@ -163,9 +157,7 @@ def make_fx(
                     convention=ModifiedFollowing,
                     end_of_month=False,
                 )
-                fx_pts_curve = [
-                    {"tenor": ten, "points": p} for ten, p in zip(tenors, pts)
-                ]
+                fx_pts_curve = [{"tenor": ten, "points": p} for ten, p in zip(tenors, pts)]
             except Exception:
                 # Safe fallback: a single near-dated zero-point that won't
                 # query beyond finite curves; lets the constructor perform
@@ -176,9 +168,7 @@ def make_fx(
 
         # If maturity not given and single tenor, align to the helper’s far date
         if maturity is None and len(tenors) == 1:
-            spot_date = calendar.advance(
-                as_of, Period(fixing_days, Days), ModifiedFollowing, False
-            )
+            spot_date = calendar.advance(as_of, Period(fixing_days, Days), ModifiedFollowing, False)
             maturity = calendar.advance(spot_date, tenors[0], ModifiedFollowing, False)
         elif maturity is None:
             maturity = as_of + Period("1Y")
@@ -245,14 +235,10 @@ class TestA_Construct:
             with pytest.raises(ValueError, match="spot .* not set or invalid"):
                 make_fx(spot=empty_spot_handle)
 
-    def test_a6_points_curve_empty(
-        self, as_of, spot_handle, flat_domestic, base_ccy, price_ccy
-    ):
+    def test_a6_points_curve_empty(self, as_of, spot_handle, flat_domestic, base_ccy, price_ccy):
         with SavedSettings():
             Settings.instance().evaluationDate = as_of
-            with pytest.raises(
-                ValueError, match="fx_fwd_pts_curve must contain at least one"
-            ):
+            with pytest.raises(ValueError, match="fx_fwd_pts_curve must contain at least one"):
                 FxForward(
                     nominal=1_000_000,
                     forward_price=1.10,
@@ -265,15 +251,11 @@ class TestA_Construct:
                     fx_fwd_pts_curve=[],  # empty -> error
                 )
 
-    def test_a7_curve_out_of_range_no_extrap_domestic_only(
-        self, as_of, make_fx, finite_domestic, maturity_9m
-    ):
+    def test_a7_curve_out_of_range_no_extrap_domestic_only(self, as_of, make_fx, finite_domestic, maturity_9m):
         with SavedSettings():
             Settings.instance().evaluationDate = as_of
             # domestic curve stops at 6M; class should reject 9M
-            with pytest.raises(
-                ValueError, match="discount_domestic .* extrapolation disabled"
-            ):
+            with pytest.raises(ValueError, match="discount_domestic .* extrapolation disabled"):
                 make_fx(disc_d=finite_domestic, maturity=maturity_9m)
 
 
@@ -314,9 +296,7 @@ class TestB_Timeline:
 
 
 class TestC_FairForward:
-    def test_c1_flat_parity(
-        self, as_of, make_fx, spot_handle, flat_domestic, flat_foreign, dc
-    ):
+    def test_c1_flat_parity(self, as_of, make_fx, spot_handle, flat_domestic, flat_foreign, dc):
         with SavedSettings():
             Settings.instance().evaluationDate = as_of
             # Build points from the two flat curves so the bootstrap is consistent
@@ -330,10 +310,7 @@ class TestC_FairForward:
             s = float(spot_handle.value())
             d_fd = float(flat_domestic.discount(fwd.maturity))
             d_ff = float(flat_foreign.discount(fwd.maturity))
-            assert (
-                pytest.approx(fwd.fair_forward(), rel=1e-12, abs=1e-12)
-                == s * d_ff / d_fd
-            )
+            assert pytest.approx(fwd.fair_forward(), rel=1e-12, abs=1e-12) == s * d_ff / d_fd
 
     def test_c2_equal_curves_imply_f_equals_s(self, as_of, dc, spot_handle):
         with SavedSettings():
@@ -421,12 +398,8 @@ class TestE_HandlesCoverage:
         with SavedSettings():
             Settings.instance().evaluationDate = as_of
             maturity = as_of + Period("9M")  # beyond finite (6M)
-            fx_pts_curve = [
-                {"tenor": Period("6M"), "points": 0.0}
-            ]  # any points; foreign curve extrapolates internally
-            with pytest.raises(
-                ValueError, match="discount_domestic .* extrapolation disabled"
-            ):
+            fx_pts_curve = [{"tenor": Period("6M"), "points": 0.0}]  # any points; foreign curve extrapolates internally
+            with pytest.raises(ValueError, match="discount_domestic .* extrapolation disabled"):
                 FxForward(
                     nominal=1_000_000,
                     forward_price=1.1,
@@ -442,9 +415,7 @@ class TestE_HandlesCoverage:
     def test_e2_helpers_required(self, as_of, spot_handle, flat_domestic):
         with SavedSettings():
             Settings.instance().evaluationDate = as_of
-            with pytest.raises(
-                ValueError, match="fx_fwd_pts_curve must contain at least one"
-            ):
+            with pytest.raises(ValueError, match="fx_fwd_pts_curve must contain at least one"):
                 FxForward(
                     nominal=1_000_000,
                     forward_price=1.1,
@@ -457,9 +428,7 @@ class TestE_HandlesCoverage:
                     fx_fwd_pts_curve=[],
                 )
 
-    def test_e3_single_helper_is_ok_and_extrapolates(
-        self, as_of, spot_handle, flat_domestic
-    ):
+    def test_e3_single_helper_is_ok_and_extrapolates(self, as_of, spot_handle, flat_domestic):
         with SavedSettings():
             Settings.instance().evaluationDate = as_of
             # Provide only a 6M point, then price a 2Y maturity.

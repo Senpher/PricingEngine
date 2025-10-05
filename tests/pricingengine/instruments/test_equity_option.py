@@ -1,7 +1,5 @@
 # tests/instruments/test_equity_option.py
 import dataclasses
-from copy import copy
-
 import math
 import pytest
 from QuantLib import (
@@ -26,16 +24,15 @@ from QuantLib import (
     VanillaOption as QLVanillaOption,
     YieldTermStructureHandle,
 )
+from copy import copy
 
-from pricingengine.instruments._option import (
-    OptionEngineParameters,  # <-- correct import
-)
-from pricingengine.instruments.equity_option import (
+from pricingengine.instruments import (
     AmericanVanillaOption,
     BermudanVanillaOption,
     EuropeanDigitalOption,
     EuropeanVanillaOption,
 )
+from pricingengine.instruments.common import OptionEngineParameters
 
 
 # ---------------------------------------------------------------------------
@@ -138,15 +135,11 @@ def risk_free_curve(valuation_date, day_counter, risk_free):
 
 @pytest.fixture
 def vol_curve(calendar, valuation_date, day_counter, vol):
-    return BlackVolTermStructureHandle(
-        BlackConstantVol(valuation_date, calendar, vol, day_counter)
-    )
+    return BlackVolTermStructureHandle(BlackConstantVol(valuation_date, calendar, vol, day_counter))
 
 
 @pytest.fixture
-def bsm_proc(
-    calendar, day_counter, valuation_date, underlying_price, dividend, risk_free, vol
-):
+def bsm_proc(calendar, day_counter, valuation_date, underlying_price, dividend, risk_free, vol):
     s = QuoteHandle(SimpleQuote(underlying_price))
     d = YieldTermStructureHandle(
         FlatForward(
@@ -166,9 +159,7 @@ def bsm_proc(
             Annual,
         )
     )
-    sigma = BlackVolTermStructureHandle(
-        BlackConstantVol(valuation_date, calendar, vol, day_counter)
-    )
+    sigma = BlackVolTermStructureHandle(BlackConstantVol(valuation_date, calendar, vol, day_counter))
     return BlackScholesMertonProcess(s, d, r, sigma)
 
 
@@ -191,8 +182,7 @@ def euro_call(
         spot=spot,
         dividend_curve=dividend_curve,
         risk_free_curve=risk_free_curve,
-        vol=vol_curve,
-        # default analytic
+        vol=vol_curve,  # default analytic
     )
 
 
@@ -236,8 +226,7 @@ def amer_call(
         spot=spot,
         dividend_curve=dividend_curve,
         risk_free_curve=risk_free_curve,
-        vol=vol_curve,
-        # default BAW
+        vol=vol_curve,  # default BAW
     )
 
 
@@ -285,8 +274,7 @@ def berm_call(
         spot=spot,
         dividend_curve=dividend_curve,
         risk_free_curve=risk_free_curve,
-        vol=vol_curve,
-        # default tree(lr)
+        vol=vol_curve,  # default tree(lr)
     )
 
 
@@ -505,9 +493,7 @@ class TestA_Construct:
             )
             assert opt.exercise_dates == (d1, d2)
 
-    @pytest.mark.parametrize(
-        "missing", ["spot", "dividend_curve", "risk_free_curve", "vol"]
-    )
+    @pytest.mark.parametrize("missing", ["spot", "dividend_curve", "risk_free_curve", "vol"])
     def test_a6_missing_market_inputs(
         self,
         missing,
@@ -555,9 +541,7 @@ class TestB_TimelineIdentity:
             "euro_digital_put",
         ],
     )
-    def test_b2_valuation_date_follows_settings(
-        self, factory_name, request, valuation_date
-    ):
+    def test_b2_valuation_date_follows_settings(self, factory_name, request, valuation_date):
         with SavedSettings():
             Settings.instance().evaluationDate = valuation_date
             opt = request.getfixturevalue(factory_name)
@@ -672,9 +656,7 @@ class TestD_Pricing:
             Settings.instance().evaluationDate = euro_call.valuation_date
             single = float(euro_call._ql_option().NPV())
             agg = euro_call.npv()
-            assert pytest.approx(agg) == pytest.approx(
-                single * euro_call.quantity * euro_call.contract_size
-            )
+            assert pytest.approx(agg) == pytest.approx(single * euro_call.quantity * euro_call.contract_size)
 
     @pytest.mark.parametrize(
         "factory_name",
@@ -695,26 +677,18 @@ class TestD_Pricing:
             if hasattr(opt, "maturity") and not hasattr(opt, "exercise_dates"):
                 Settings.instance().evaluationDate = opt.maturity + Period("1M")
             else:
-                Settings.instance().evaluationDate = opt.exercise_dates[-1] + Period(
-                    "1M"
-                )
+                Settings.instance().evaluationDate = opt.exercise_dates[-1] + Period("1M")
             assert opt.is_expired is True
             assert opt.npv() == 0.0
 
-    def test_d3_american_vs_european_call_no_dividends(
-        self, amer_call, euro_call, bsm_proc
-    ):
+    def test_d3_american_vs_european_call_no_dividends(self, amer_call, euro_call, bsm_proc):
         with SavedSettings():
             Settings.instance().evaluationDate = euro_call.valuation_date
             pv_e = euro_call.npv()
             pv_a = amer_call.npv()
-            assert pytest.approx(pv_a, rel=5e-3, abs=5e-3) == pytest.approx(
-                pv_e, rel=5e-3, abs=5e-3
-            )
+            assert pytest.approx(pv_a, rel=5e-3, abs=5e-3) == pytest.approx(pv_e, rel=5e-3, abs=5e-3)
 
-    def test_d4_bermudan_between_euro_and_american(
-        self, berm_put, amer_put, euro_put, bsm_proc
-    ):
+    def test_d4_bermudan_between_euro_and_american(self, berm_put, amer_put, euro_put, bsm_proc):
         with SavedSettings():
             Settings.instance().evaluationDate = euro_put.valuation_date
             pv_e = euro_put.npv()
@@ -759,9 +733,7 @@ class TestE_Greeks:
             assert math.isfinite(val)
 
     @pytest.mark.parametrize("greek", GREEK_FUNCS)
-    def test_e2_european_call_put_signs_and_bounds(
-        self, euro_call, euro_put, bsm_proc, greek
-    ):
+    def test_e2_european_call_put_signs_and_bounds(self, euro_call, euro_put, bsm_proc, greek):
         with SavedSettings():
             Settings.instance().evaluationDate = euro_call.valuation_date
             ql_c = euro_call._ql_option()
@@ -803,9 +775,7 @@ class TestE_Greeks:
             if hasattr(opt, "maturity") and not hasattr(opt, "exercise_dates"):
                 Settings.instance().evaluationDate = opt.maturity + Period("1D")
             else:
-                Settings.instance().evaluationDate = opt.exercise_dates[-1] + Period(
-                    "1D"
-                )
+                Settings.instance().evaluationDate = opt.exercise_dates[-1] + Period("1D")
 
             ql = opt._ql_option()
             try:
@@ -909,17 +879,14 @@ class TestE_EngineMatrixExhaustive:
     # What we *expect* each engine to provide (by QL design/build in most wheels)
     ENGINE_CAPS = {
         "AnalyticEuropeanEngine": {"both": {"delta", "gamma", "vega", "rho", "theta"}},
-        "FdBlackScholesVanillaEngine": {
-            "both": {"delta", "gamma", "theta"}
-        },  # what your wheel exposes
+        "FdBlackScholesVanillaEngine": {"both": {"delta", "gamma", "theta"}},  # what your wheel exposes
         # BAW varies by build; your probe shows calls OK, puts missing -> reflect that.
         "BaroneAdesiWhaleyApproximationEngine": {
             "call": {"delta", "gamma", "vega", "rho", "theta"},
-            "put": set(),  # price-only in your environment
+            "put": set(),
+            # price-only in your environment
         },
-        "BjerksundStenslandApproximationEngine": {
-            "both": {"delta", "gamma", "vega", "rho", "theta"}
-        },
+        "BjerksundStenslandApproximationEngine": {"both": {"delta", "gamma", "vega", "rho", "theta"}},
         # Trees: most wheels expose these three
         "BinomialVanillaEngine": {"both": {"delta", "gamma", "theta"}},
         "BinomialJRVanillaEngine": {"both": {"delta", "gamma", "theta"}},
@@ -938,15 +905,11 @@ class TestE_EngineMatrixExhaustive:
         "fd": lambda: OptionEngineParameters.fd(nt=121, nx=241),
         "baw": OptionEngineParameters.baw,
         "bjerksund": OptionEngineParameters.bjerksund,
-        **{
-            f"tree_{m}": (lambda m=m: OptionEngineParameters.tree(steps=201, method=m))
-            for m in TREE_METHODS
-        },
+        **{f"tree_{m}": (lambda m=m: OptionEngineParameters.tree(steps=201, method=m)) for m in TREE_METHODS},
     }
 
     # For each option fixture name, which engines are supported vs rejected
-    OPTION_ENGINE_MATRIX = {
-        # Europeans
+    OPTION_ENGINE_MATRIX = {  # Europeans
         "euro_call": {
             "supported": ("analytic", "fd"),
             "rejected": ("baw", "bjerksund", *[f"tree_{m}" for m in TREE_METHODS]),
@@ -981,8 +944,7 @@ class TestE_EngineMatrixExhaustive:
                 *[f"tree_{m}" for m in TREE_METHODS],
             ),
             "rejected": ("analytic",),
-        },
-        # Bermudans: all trees + FD
+        },  # Bermudans: all trees + FD
         "berm_call": {
             "supported": ("fd", *[f"tree_{m}" for m in TREE_METHODS]),
             "rejected": ("analytic", "baw", "bjerksund"),
@@ -1030,9 +992,7 @@ class TestE_EngineMatrixExhaustive:
         if isinstance(opt, AmericanVanillaOption):
             return K(strike=opt.strike, maturity=opt.maturity, **base)
         if isinstance(opt, BermudanVanillaOption):
-            return K(
-                strike=opt.strike, exercise_dates=tuple(opt.exercise_dates), **base
-            )
+            return K(strike=opt.strike, exercise_dates=tuple(opt.exercise_dates), **base)
         raise TypeError(f"Unknown option subclass: {K!r}")
 
     @staticmethod
@@ -1068,9 +1028,7 @@ class TestE_EngineMatrixExhaustive:
         ("analytic", "fd", "baw", "bjerksund", *[f"tree_{m}" for m in TREE_METHODS]),
     )
     @pytest.mark.parametrize("factory_name", OPTION_FIXTURE_NAMES)
-    def test_engine_caps_vs_wrapper_behavior(
-        self, factory_name, engine_key, greek, request, bsm_proc
-    ):
+    def test_engine_caps_vs_wrapper_behavior(self, factory_name, engine_key, greek, request, bsm_proc):
         """
         For EVERY (option, engine, greek):
           - If the engine is rejected by the constructor -> assert ValueError (this IS the test).
@@ -1114,9 +1072,7 @@ class TestE_EngineMatrixExhaustive:
                 with pytest.raises(RuntimeError):
                     getattr(ql, greek)()
                 o_val = getattr(opt, greek)()
-                assert math.isfinite(o_val), (
-                    f"{type(opt).__name__}.{greek} must be finite via FD fallback"
-                )
+                assert math.isfinite(o_val), f"{type(opt).__name__}.{greek} must be finite via FD fallback"
 
 
 # ---------------------------------------------------------------------------
@@ -1193,17 +1149,11 @@ class TestG_Engines:
             pv_c = am_coarse.npv()
             pv_f = am_fine.npv()
 
-            assert pytest.approx(pv_c, rel=2e-2, abs=2e-2) == pytest.approx(
-                pv_e, rel=2e-2, abs=2e-2
-            )
-            assert pytest.approx(pv_f, rel=5e-3, abs=5e-3) == pytest.approx(
-                pv_e, rel=5e-3, abs=5e-3
-            )
+            assert pytest.approx(pv_c, rel=2e-2, abs=2e-2) == pytest.approx(pv_e, rel=2e-2, abs=2e-2)
+            assert pytest.approx(pv_f, rel=5e-3, abs=5e-3) == pytest.approx(pv_e, rel=5e-3, abs=5e-3)
             assert abs(pv_f - pv_c) < 0.5
 
-    def test_g2_bermudan_bounds_stable_across_grids(
-        self, berm_put, amer_put, euro_put, bsm_proc
-    ):
+    def test_g2_bermudan_bounds_stable_across_grids(self, berm_put, amer_put, euro_put, bsm_proc):
         with SavedSettings():
             Settings.instance().evaluationDate = euro_put.valuation_date
 
@@ -1279,9 +1229,7 @@ class TestG_Engines:
             ).npv()
 
             assert abs(eu_fd_fine - eu_ref) < abs(eu_fd_coarse - eu_ref)
-            assert pytest.approx(eu_fd_fine, rel=5e-3, abs=5e-3) == pytest.approx(
-                eu_ref, rel=5e-3, abs=5e-3
-            )
+            assert pytest.approx(eu_fd_fine, rel=5e-3, abs=5e-3) == pytest.approx(eu_ref, rel=5e-3, abs=5e-3)
 
 
 # ---------------------------------------------------------------------------
@@ -1294,9 +1242,7 @@ class TestH_EngineMatrix:
 
     # ------------------ European ------------------
 
-    @pytest.mark.parametrize(
-        "factory", [OptionEngineParameters.analytic, OptionEngineParameters.fd]
-    )
+    @pytest.mark.parametrize("factory", [OptionEngineParameters.analytic, OptionEngineParameters.fd])
     def test_h1_euro_supported_engines(
         self,
         factory,
@@ -1309,9 +1255,7 @@ class TestH_EngineMatrix:
         vol_curve,
         bsm_proc,
     ):
-        params = factory(
-            **({"nt": 60, "nx": 120} if factory is OptionEngineParameters.fd else {})
-        )
+        params = factory(**({"nt": 60, "nx": 120} if factory is OptionEngineParameters.fd else {}))
         opt = EuropeanVanillaOption(
             quantity=1,
             option_type=Option.Call,
@@ -1359,11 +1303,7 @@ class TestH_EngineMatrix:
                 strike=strike,
                 maturity=maturity,
                 engine_params=bad_factory(
-                    **(
-                        {"steps": 111, "tree_method": "lr"}
-                        if bad_factory is OptionEngineParameters.tree
-                        else {}
-                    )
+                    **({"steps": 111, "tree_method": "lr"} if bad_factory is OptionEngineParameters.tree else {})
                 ),
                 spot=spot,
                 dividend_curve=dividend_curve,
@@ -1393,9 +1333,7 @@ class TestH_EngineMatrix:
         vol_curve,
         bsm_proc,
     ):
-        params = factory(
-            **({"nt": 60, "nx": 120} if factory is OptionEngineParameters.fd else {})
-        )
+        params = factory(**({"nt": 60, "nx": 120} if factory is OptionEngineParameters.fd else {}))
         opt = AmericanVanillaOption(
             quantity=1,
             option_type=Option.Put,
@@ -1633,18 +1571,12 @@ class TestI_CrossEngineStability:
             )
 
         # European vanilla
-        if (
-            hasattr(opt, "maturity")
-            and hasattr(opt, "strike")
-            and not hasattr(opt, "exercise_dates")
-        ):
+        if hasattr(opt, "maturity") and hasattr(opt, "strike") and not hasattr(opt, "exercise_dates"):
             return K(strike=opt.strike, maturity=opt.maturity, **common)
 
         # Bermudan vanilla
         if hasattr(opt, "exercise_dates"):
-            return K(
-                strike=opt.strike, exercise_dates=tuple(opt.exercise_dates), **common
-            )
+            return K(strike=opt.strike, exercise_dates=tuple(opt.exercise_dates), **common)
 
         raise TypeError(f"Unsupported option type for builder: {K!r}")
 
@@ -1672,9 +1604,7 @@ class TestI_CrossEngineStability:
                 continue
 
             # pick tolerances, swapping order if needed
-            tols = self.TOLS.get((ref_key, cmp_key)) or self.TOLS.get(
-                (cmp_key, ref_key)
-            )
+            tols = self.TOLS.get((ref_key, cmp_key)) or self.TOLS.get((cmp_key, ref_key))
             assert tols is not None, f"No tolerances for pair {(ref_key, cmp_key)}"
             with SavedSettings():
                 Settings.instance().evaluationDate = ref.valuation_date

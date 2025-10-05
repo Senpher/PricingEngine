@@ -1,5 +1,3 @@
-from dataclasses import FrozenInstanceError
-
 import pytest
 from QuantLib import (
     Actual360,
@@ -25,15 +23,16 @@ from QuantLib import (
     Swap,
     Calendar,
 )
+from dataclasses import FrozenInstanceError
 
-from pricingengine.cashflows.swap_leg import (
+from pricingengine import CURRENCIES
+from pricingengine.instruments import InterestRateSwap
+from pricingengine.instruments.common import (
     AmortizedFixedLeg,
     AmortizedFloatingLeg,
     FixedLeg,
     FloatingLeg,
 )
-from pricingengine.currencies import CURRENCIES
-from pricingengine.instruments.interest_rate_swap import InterestRateSwap
 
 
 # -----------------------
@@ -116,9 +115,7 @@ def index(calendar, day_counter, issue_date, maturity, tenor, currency):
     )
     horizon = sched.dates()[-1] + tenor
 
-    yts = YieldTermStructureHandle(
-        ForwardCurve((issue_date, horizon), (flat_rate, flat_rate), day_counter)
-    )
+    yts = YieldTermStructureHandle(ForwardCurve((issue_date, horizon), (flat_rate, flat_rate), day_counter))
 
     idx = IborIndex(
         "Libor",
@@ -141,9 +138,7 @@ def index(calendar, day_counter, issue_date, maturity, tenor, currency):
 
 
 @pytest.fixture
-def floating_leg(
-    calendar, currency, day_counter, issue_date, nominal, maturity, index, tenor
-):
+def floating_leg(calendar, currency, day_counter, issue_date, nominal, maturity, index, tenor):
     """
     Factory returning a FloatingLeg with given gearing & spread (valuation date is global Settings).
     """
@@ -199,53 +194,37 @@ class TestA_ConstructionAndInvariants:
 
     def test_immutability(self, fixed_leg, floating_leg, discount_yts):
         leg1, leg2 = fixed_leg(0.025), floating_leg(1, 0.00)
-        swap = InterestRateSwap(
-            receiving_leg=leg1, paying_leg=leg2, discount_curve=discount_yts
-        )
+        swap = InterestRateSwap(receiving_leg=leg1, paying_leg=leg2, discount_curve=discount_yts)
         with pytest.raises(FrozenInstanceError):
             swap.paying_leg = leg2  # any reassignment should fail
 
     def test_same_issue_date_required(self, fixed_leg, floating_leg, discount_yts):
         leg1, leg2 = fixed_leg(0.025), floating_leg(1, 0.00)
-        object.__setattr__(
-            leg1, "issue_date", leg1.calendar.advance(leg1.issue_date, Period("-1Y"))
-        )
+        object.__setattr__(leg1, "issue_date", leg1.calendar.advance(leg1.issue_date, Period("-1Y")))
         with pytest.raises(ValueError):
-            _ = InterestRateSwap(
-                receiving_leg=leg1, paying_leg=leg2, discount_curve=discount_yts
-            )
+            _ = InterestRateSwap(receiving_leg=leg1, paying_leg=leg2, discount_curve=discount_yts)
 
     def test_same_maturity_required(self, fixed_leg, floating_leg, discount_yts):
         leg1, leg2 = fixed_leg(0.025), floating_leg(1, 0.00)
-        object.__setattr__(
-            leg1, "maturity", leg1.calendar.advance(leg1.maturity, Period("-1Y"))
-        )
+        object.__setattr__(leg1, "maturity", leg1.calendar.advance(leg1.maturity, Period("-1Y")))
         with pytest.raises(ValueError):
-            _ = InterestRateSwap(
-                receiving_leg=leg1, paying_leg=leg2, discount_curve=discount_yts
-            )
+            _ = InterestRateSwap(receiving_leg=leg1, paying_leg=leg2, discount_curve=discount_yts)
 
     def test_same_currency_required(self, fixed_leg, floating_leg, discount_yts):
         leg1, leg2 = fixed_leg(0.025), floating_leg(1, 0.00)
         object.__setattr__(leg1, "currency", "USD")
         with pytest.raises(ValueError):
-            _ = InterestRateSwap(
-                receiving_leg=leg1, paying_leg=leg2, discount_curve=discount_yts
-            )
+            _ = InterestRateSwap(receiving_leg=leg1, paying_leg=leg2, discount_curve=discount_yts)
 
     def test_fixed_fixed_not_allowed(self, fixed_leg, discount_yts):
         l1, l2 = fixed_leg(0.050), fixed_leg(0.025)
         with pytest.raises(ValueError):
-            _ = InterestRateSwap(
-                receiving_leg=l1, paying_leg=l2, discount_curve=discount_yts
-            )
+            _ = InterestRateSwap(receiving_leg=l1, paying_leg=l2, discount_curve=discount_yts)
 
     def test_float_float_not_allowed(self, floating_leg, discount_yts):
         l1, l2 = floating_leg(1, 0.00), floating_leg(2, 0.01)
         with pytest.raises(ValueError):
-            _ = InterestRateSwap(
-                receiving_leg=l1, paying_leg=l2, discount_curve=discount_yts
-            )
+            _ = InterestRateSwap(receiving_leg=l1, paying_leg=l2, discount_curve=discount_yts)
 
 
 # =======================
@@ -256,9 +235,7 @@ class TestA_ConstructionAndInvariants:
 class TestB_LegFindersAndProperties:
     def test_fixed_leg_property(self, fixed_leg, floating_leg, discount_yts):
         leg_fix, leg_flt = fixed_leg(0.025), floating_leg(1, 0.00)
-        swap = InterestRateSwap(
-            receiving_leg=leg_fix, paying_leg=leg_flt, discount_curve=discount_yts
-        )
+        swap = InterestRateSwap(receiving_leg=leg_fix, paying_leg=leg_flt, discount_curve=discount_yts)
         assert swap.fixed_leg is leg_fix
 
     def test_floating_leg_property(self, fixed_leg, floating_leg, discount_yts, index):
@@ -275,9 +252,7 @@ class TestB_LegFindersAndProperties:
             False,
         )
         n_coupons = max(0, len(sch.dates()))
-        per_coupon = tuple(
-            leg_flt.nominal for _ in range(n_coupons)
-        )  # flat notionals ok
+        per_coupon = tuple(leg_flt.nominal for _ in range(n_coupons))  # flat notionals ok
 
         leg_flt_amort = AmortizedFloatingLeg(
             nominal=leg_flt.nominal,
@@ -292,23 +267,17 @@ class TestB_LegFindersAndProperties:
             spread=leg_flt.spread,
             per_coupon_nominals=per_coupon,
         )
-        swap = InterestRateSwap(
-            receiving_leg=leg_fix, paying_leg=leg_flt_amort, discount_curve=discount_yts
-        )
+        swap = InterestRateSwap(receiving_leg=leg_fix, paying_leg=leg_flt_amort, discount_curve=discount_yts)
         assert swap.floating_leg is leg_flt_amort
 
     def test_properties_forwarded(self, fixed_leg, floating_leg, discount_yts):
         leg_fix, leg_flt = fixed_leg(0.025), floating_leg(1, 0.00)
-        swap = InterestRateSwap(
-            receiving_leg=leg_fix, paying_leg=leg_flt, discount_curve=discount_yts
-        )
+        swap = InterestRateSwap(receiving_leg=leg_fix, paying_leg=leg_flt, discount_curve=discount_yts)
         assert swap.currency == leg_fix.currency
         assert swap.issue_date == leg_fix.issue_date
         assert swap.maturity == leg_fix.maturity
 
-    def test_valuation_date_tracks_settings(
-        self, fixed_leg, floating_leg, discount_yts, maturity
-    ):
+    def test_valuation_date_tracks_settings(self, fixed_leg, floating_leg, discount_yts, maturity):
         with SavedSettings():
             Settings.instance().evaluationDate = maturity - 7
             swap = InterestRateSwap(
@@ -325,9 +294,7 @@ class TestB_LegFindersAndProperties:
 
 
 class TestC_ExpiryLifecycle:
-    def test_not_expired_before_maturity(
-        self, fixed_leg, floating_leg, discount_yts, maturity
-    ):
+    def test_not_expired_before_maturity(self, fixed_leg, floating_leg, discount_yts, maturity):
         with SavedSettings():
             Settings.instance().evaluationDate = maturity - 1
             swap = InterestRateSwap(
@@ -337,9 +304,7 @@ class TestC_ExpiryLifecycle:
             )
             assert not swap.is_expired
 
-    def test_not_expired_on_maturity(
-        self, fixed_leg, floating_leg, discount_yts, maturity
-    ):
+    def test_not_expired_on_maturity(self, fixed_leg, floating_leg, discount_yts, maturity):
         with SavedSettings():
             Settings.instance().evaluationDate = maturity
             swap = InterestRateSwap(
@@ -349,9 +314,7 @@ class TestC_ExpiryLifecycle:
             )
             assert not swap.is_expired
 
-    def test_expired_after_maturity(
-        self, fixed_leg, floating_leg, discount_yts, maturity
-    ):
+    def test_expired_after_maturity(self, fixed_leg, floating_leg, discount_yts, maturity):
         with SavedSettings():
             Settings.instance().evaluationDate = maturity + 1
             swap = InterestRateSwap(
@@ -378,25 +341,17 @@ class TestD_MarkToMarket:
             leg_flt = floating_leg(1, 0.00)
             leg_fix = fixed_leg(0.025)
 
-            pv1 = InterestRateSwap(
-                receiving_leg=leg_flt, paying_leg=leg_fix, discount_curve=discount_yts
-            ).npv()
-            pv2 = InterestRateSwap(
-                receiving_leg=leg_fix, paying_leg=leg_flt, discount_curve=discount_yts
-            ).npv()
+            pv1 = InterestRateSwap(receiving_leg=leg_flt, paying_leg=leg_fix, discount_curve=discount_yts).npv()
+            pv2 = InterestRateSwap(receiving_leg=leg_fix, paying_leg=leg_flt, discount_curve=discount_yts).npv()
             assert -pv1 == pv2
             assert abs(pv1) / leg_flt.nominal < 1e-3  # ~1bp of notional tolerance
 
-    def test_mtm_zero_when_expired(
-        self, fixed_leg, floating_leg, discount_yts, maturity
-    ):
+    def test_mtm_zero_when_expired(self, fixed_leg, floating_leg, discount_yts, maturity):
         with SavedSettings():
             Settings.instance().evaluationDate = maturity
             leg_flt = floating_leg(1, 0.00)
             leg_fix = fixed_leg(0.025)
-            pv = InterestRateSwap(
-                receiving_leg=leg_flt, paying_leg=leg_fix, discount_curve=discount_yts
-            ).npv()
+            pv = InterestRateSwap(receiving_leg=leg_flt, paying_leg=leg_fix, discount_curve=discount_yts).npv()
             assert pv == 0.0
 
 
@@ -415,9 +370,7 @@ class TestE_VanillaEquivalence:
 
             leg_flt = floating_leg(1, 0.00)
             leg_fix = fixed_leg(0.025)
-            swap = InterestRateSwap(
-                receiving_leg=leg_flt, paying_leg=leg_fix, discount_curve=discount_yts
-            )
+            swap = InterestRateSwap(receiving_leg=leg_flt, paying_leg=leg_fix, discount_curve=discount_yts)
 
             npv = swap.npv()
             pv01 = swap.pv01()
@@ -439,17 +392,13 @@ class TestF_CurveGreeks:
         with SavedSettings():
             Settings.instance().evaluationDate = Date(5, 5, 2024)
             leg_flt, leg_fix = floating_leg(1, 0.00), fixed_leg(0.025)
-            swap = InterestRateSwap(
-                receiving_leg=leg_flt, paying_leg=leg_fix, discount_curve=discount_yts
-            )
+            swap = InterestRateSwap(receiving_leg=leg_flt, paying_leg=leg_fix, discount_curve=discount_yts)
 
             base = swap.npv()
 
             # Build a 1bp bumped discount engine manually
             spread = QuoteHandle(SimpleQuote(1.0 / 10_000.0))
-            bumped_ts = ZeroSpreadedTermStructure(
-                discount_yts, spread, Continuous, Annual, discount_yts.dayCounter()
-            )
+            bumped_ts = ZeroSpreadedTermStructure(discount_yts, spread, Continuous, Annual, discount_yts.dayCounter())
             bumped_engine = DiscountingSwapEngine(YieldTermStructureHandle(bumped_ts))
 
             pay, rec = swap.paying_leg.cashflows, swap.receiving_leg.cashflows
@@ -464,9 +413,7 @@ class TestF_CurveGreeks:
         with SavedSettings():
             Settings.instance().evaluationDate = Date(5, 5, 2024)
             leg_flt, leg_fix = floating_leg(1, 0.00), fixed_leg(0.025)
-            swap = InterestRateSwap(
-                receiving_leg=leg_flt, paying_leg=leg_fix, discount_curve=discount_yts
-            )
+            swap = InterestRateSwap(receiving_leg=leg_flt, paying_leg=leg_fix, discount_curve=discount_yts)
 
             base = swap.npv()
 
@@ -474,9 +421,7 @@ class TestF_CurveGreeks:
             idx0 = swap.floating_leg.index
             fwd = idx0.forwardingTermStructure()
             spread = QuoteHandle(SimpleQuote(1.0 / 10_000.0))
-            bumped_fwd_ts = ZeroSpreadedTermStructure(
-                fwd, spread, Continuous, Annual, fwd.dayCounter()
-            )
+            bumped_fwd_ts = ZeroSpreadedTermStructure(fwd, spread, Continuous, Annual, fwd.dayCounter())
             idx_bumped = idx0.clone(YieldTermStructureHandle(bumped_fwd_ts))
 
             fl_bumped = swap.floating_leg.with_index(idx_bumped)
@@ -504,9 +449,7 @@ class TestG_Diagnostics:
         with SavedSettings():
             Settings.instance().evaluationDate = Date(5, 5, 2024)
             leg_flt, leg_fix = floating_leg(1, 0.00), fixed_leg(0.025)
-            swap = InterestRateSwap(
-                receiving_leg=leg_flt, paying_leg=leg_fix, discount_curve=discount_yts
-            )
+            swap = InterestRateSwap(receiving_leg=leg_flt, paying_leg=leg_fix, discount_curve=discount_yts)
 
             df = swap.cashflow_table()
             # rows = number of coupon dates (schedule length - 1)
@@ -556,14 +499,10 @@ class TestH_HelperFinders:
             rate=leg_fix.rate,
             per_coupon_nominals=per_coupon,
         )
-        swap = InterestRateSwap(
-            receiving_leg=leg_fix_amort, paying_leg=leg_flt, discount_curve=discount_yts
-        )
+        swap = InterestRateSwap(receiving_leg=leg_fix_amort, paying_leg=leg_flt, discount_curve=discount_yts)
         assert swap.fixed_leg is leg_fix_amort
 
-    def test_find_floating_on_amortized_floating(
-        self, fixed_leg, floating_leg, discount_yts, index
-    ):
+    def test_find_floating_on_amortized_floating(self, fixed_leg, floating_leg, discount_yts, index):
         leg_fix = fixed_leg(0.025)
         leg_flt = floating_leg(1, 0.00)
         sch = Schedule(
@@ -591,7 +530,5 @@ class TestH_HelperFinders:
             spread=leg_flt.spread,
             per_coupon_nominals=per_coupon,
         )
-        swap = InterestRateSwap(
-            receiving_leg=leg_fix, paying_leg=leg_flt_amort, discount_curve=discount_yts
-        )
+        swap = InterestRateSwap(receiving_leg=leg_fix, paying_leg=leg_flt_amort, discount_curve=discount_yts)
         assert swap.floating_leg is leg_flt_amort

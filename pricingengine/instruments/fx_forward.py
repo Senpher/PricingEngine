@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from typing import List, Dict, Any
-
 from QuantLib import (
     Date,
     Settings,
@@ -22,9 +19,11 @@ from QuantLib import (
     Calendar,
     TARGET,
 )
+from dataclasses import dataclass, replace
+from typing import List, Dict, Any
 
-from pricingengine.currencies import CURRENCIES
-from pricingengine.instruments._instrument import Instrument
+from pricingengine import CURRENCIES
+from pricingengine.instruments.common import Instrument
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -81,10 +80,7 @@ class FxForward(Instrument):
             raise ValueError("'nominal' must be positive")
         if self.forward_price <= 0:
             raise ValueError("'forward_price' must be positive")
-        if (
-            self.base_currency not in CURRENCIES
-            or self.price_currency not in CURRENCIES
-        ):
+        if self.base_currency not in CURRENCIES or self.price_currency not in CURRENCIES:
             raise ValueError("Unknown currency code(s)")
         if self.base_currency == self.price_currency:
             raise ValueError("Base and price currencies must differ")
@@ -98,9 +94,7 @@ class FxForward(Instrument):
             raise ValueError("spot must be positive")
 
         # domestic curve usable at maturity
-        self._ensure_handle_ok(
-            self.discount_domestic, "discount_domestic", self.maturity
-        )
+        self._ensure_handle_ok(self.discount_domestic, "discount_domestic", self.maturity)
 
         # need at least one point
         if not self.fx_fwd_pts_curve:
@@ -139,8 +133,7 @@ class FxForward(Instrument):
         max_d = ts.maxDate()
         if (d < ref or d > max_d) and not ts.allowsExtrapolation():
             raise ValueError(
-                f"{name} cannot be used at {d.ISO()} "
-                f"(ref={ref.ISO()}, max={max_d.ISO()}, extrapolation disabled)"
+                f"{name} cannot be used at {d.ISO()} (ref={ref.ISO()}, max={max_d.ISO()}, extrapolation disabled)"
             )
         if d >= ref:
             _ = float(ts.discount(d))  # probe only when time >= 0
@@ -152,9 +145,7 @@ class FxForward(Instrument):
         helpers: list[FxSwapRateHelper] = []
         for item in self.fx_fwd_pts_curve:
             if "tenor" not in item or "points" not in item:
-                raise ValueError(
-                    f"fx_fwd_pts_curve item must have 'tenor' and 'points': {item!r}"
-                )
+                raise ValueError(f"fx_fwd_pts_curve item must have 'tenor' and 'points': {item!r}")
             tenor = self._to_period(item["tenor"])
             pts = float(item["points"])
             qh = QuoteHandle(SimpleQuote(pts))

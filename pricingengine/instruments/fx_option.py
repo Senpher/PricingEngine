@@ -1,22 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Tuple, Optional
-
 from QuantLib import (
     Date,
     QuoteHandle,
     YieldTermStructureHandle,
     BlackVolTermStructureHandle,
 )
+from dataclasses import dataclass
+from typing import Tuple, Optional
 
-from pricingengine.instruments.equity_option import (
-    OptionEngineParameters,
+from pricingengine.instruments import (
     EuropeanVanillaOption,
     AmericanVanillaOption,
     BermudanVanillaOption,
     EuropeanDigitalOption,
 )
+from pricingengine.instruments.common import OptionEngineParameters
 
 
 # -------------------------

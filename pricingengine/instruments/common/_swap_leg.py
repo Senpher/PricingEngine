@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from typing import Tuple
-
 from QuantLib import (
     Calendar,
     CashFlow,
@@ -20,14 +17,14 @@ from QuantLib import (
     IborIndex,
     Settings,
 )
+from dataclasses import dataclass, replace
 from pandas import DataFrame, option_context
+from typing import Tuple
 
-from pricingengine.currencies import CURRENCIES
+from pricingengine import CURRENCIES
 
 
-def forward_marching_schedule(
-    start: Date, end: Date, period: Period, calendar: Calendar
-) -> Schedule:
+def forward_marching_schedule(start: Date, end: Date, period: Period, calendar: Calendar) -> Schedule:
     """
     Returns a forward marching schedule.
 
@@ -66,9 +63,7 @@ def forward_marching_schedule(
     )
 
 
-def update_dates_in_schedule(
-    schedule: Schedule, new_dates: tuple[Date, ...]
-) -> Schedule:
+def update_dates_in_schedule(schedule: Schedule, new_dates: tuple[Date, ...]) -> Schedule:
     """
     Returns a schedule with `new_dates` and the remaining schedule parameters
     templated from `schedule`.
@@ -120,9 +115,7 @@ class SwapLeg:
             raise ValueError("'nominal' must be positive")
 
         if self.currency not in CURRENCIES:
-            raise ValueError(
-                "'currency' is not supported in QuantLib - unable to create index"
-            )
+            raise ValueError("'currency' is not supported in QuantLib - unable to create index")
 
     @property
     def valuation_date(self) -> Date:

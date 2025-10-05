@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from functools import cached_property
-from typing import Tuple, Dict, Iterable, ClassVar
-
 from QuantLib import (  # Core dates/settings
     Date,
     Period,
@@ -33,8 +29,11 @@ from QuantLib import (  # Core dates/settings
     Annual,
     NullCalendar,
 )
+from dataclasses import dataclass, field
+from functools import cached_property
+from typing import Tuple, Dict, Iterable, ClassVar
 
-from pricingengine.instruments._option import (
+from pricingengine.instruments.common import (
     Option,
     OptionEngineParameters,
 )
@@ -87,13 +86,8 @@ class EquityOption(Option):
         if int(self.contract_size) <= 0:
             raise ValueError("'contract_size' must be > 0")
 
-        if any(
-            x is None
-            for x in (self.spot, self.dividend_curve, self.risk_free_curve, self.vol)
-        ):
-            raise ValueError(
-                "Missing market inputs: spot/dividend_curve/risk_free_curve/vol"
-            )
+        if any(x is None for x in (self.spot, self.dividend_curve, self.risk_free_curve, self.vol)):
+            raise ValueError("Missing market inputs: spot/dividend_curve/risk_free_curve/vol")
 
         # engine validation against style
         self.engine_params.validate_for(self.STYLE)
@@ -114,9 +108,7 @@ class EquityOption(Option):
         raise NotImplementedError
 
     def _process(self) -> BlackScholesMertonProcess:
-        return BlackScholesMertonProcess(
-            self.spot, self.dividend_curve, self.risk_free_curve, self.vol
-        )
+        return BlackScholesMertonProcess(self.spot, self.dividend_curve, self.risk_free_curve, self.vol)
 
     def _ql_option(self) -> QLVanillaOption:
         ql = QLVanillaOption(self._payoff, self._exercise)
@@ -164,25 +156,15 @@ class EquityOption(Option):
         r = self.risk_free_curve
         if bump_r_abs is not None:
             vd = self.valuation_date
-            dc = (
-                self.risk_free_curve.dayCounter()
-                if hasattr(self.risk_free_curve, "dayCounter")
-                else Actual365Fixed()
-            )
+            dc = self.risk_free_curve.dayCounter() if hasattr(self.risk_free_curve, "dayCounter") else Actual365Fixed()
             lvl = self.risk_free_curve.zeroRate(expiry_date, dc, Simple, Annual).rate()
             r = YieldTermStructureHandle(FlatForward(vd, lvl + bump_r_abs, dc))
 
         # ---- vol (constant vol bumped using *expiry* tenor)
         v = self.vol
         if bump_sigma_rel is not None:
-            dc = (
-                self.vol.dayCounter()
-                if hasattr(self.vol, "dayCounter")
-                else Actual365Fixed()
-            )
-            cal = (
-                self.vol.calendar() if hasattr(self.vol, "calendar") else NullCalendar()
-            )
+            dc = self.vol.dayCounter() if hasattr(self.vol, "dayCounter") else Actual365Fixed()
+            cal = self.vol.calendar() if hasattr(self.vol, "calendar") else NullCalendar()
             vd = self.valuation_date
 
             # read the vol at the *expiry* time; stick to strike for now
@@ -195,18 +177,14 @@ class EquityOption(Option):
             else:
                 raise ValueError(f"Unknown greek_bump_policy: {self.greek_bump_policy}")
 
-            v = BlackVolTermStructureHandle(
-                BlackConstantVol(vd, cal, max(1e-8, bumped), dc)
-            )
+            v = BlackVolTermStructureHandle(BlackConstantVol(vd, cal, max(1e-8, bumped), dc))
 
         proc = BlackScholesMertonProcess(s, self.dividend_curve, r, v)
 
         # ---- time bump (theta) if requested
         if bump_days:
             with SavedSettings():
-                Settings.instance().evaluationDate = self.valuation_date + Period(
-                    f"{int(bump_days)}D"
-                )
+                Settings.instance().evaluationDate = self.valuation_date + Period(f"{int(bump_days)}D")
                 ql = QLVanillaOption(self._payoff, self._exercise)
                 ql.setPricingEngine(self._engine(proc))
                 return float(ql.NPV())
@@ -219,9 +197,7 @@ class EquityOption(Option):
     def _ql_greek(self, name: str) -> float | None:
         try:
             val = float(getattr(self._ql_option(), name)())
-            self._trace_greek(
-                greek=name, source="engine", engine=self.engine_params.kind, value=val
-            )
+            self._trace_greek(greek=name, source="engine", engine=self.engine_params.kind, value=val)
             return val
         except Exception:
             return None
@@ -338,9 +314,7 @@ class EuropeanVanillaOption(EquityOption):
 
     strike: float
     maturity: Date
-    engine_params: OptionEngineParameters = field(
-        default_factory=OptionEngineParameters.analytic
-    )
+    engine_params: OptionEngineParameters = field(default_factory=OptionEngineParameters.analytic)
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -365,9 +339,7 @@ class EuropeanVanillaOption(EquityOption):
         if self.is_expired or k == "analytic":
             return AnalyticEuropeanEngine(process)
         if k == "fd":
-            return FdBlackScholesVanillaEngine(
-                process, int(self.engine_params.nt), int(self.engine_params.nx)
-            )
+            return FdBlackScholesVanillaEngine(process, int(self.engine_params.nt), int(self.engine_params.nx))
         # Explicit guard: unsupported engines for European
         raise ValueError(f"Engine '{k}' is not supported for European options")
 
@@ -379,9 +351,7 @@ class EuropeanDigitalOption(EquityOption):
     cash_payoff: float
     strike: float
     maturity: Date
-    engine_params: OptionEngineParameters = field(
-        default_factory=OptionEngineParameters.analytic
-    )
+    engine_params: OptionEngineParameters = field(default_factory=OptionEngineParameters.analytic)
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -409,9 +379,7 @@ class EuropeanDigitalOption(EquityOption):
             # AnalyticEuropeanEngine supports digital payoffs
             return AnalyticEuropeanEngine(process)
         if k == "fd":
-            return FdBlackScholesVanillaEngine(
-                process, int(self.engine_params.nt), int(self.engine_params.nx)
-            )
+            return FdBlackScholesVanillaEngine(process, int(self.engine_params.nt), int(self.engine_params.nx))
         # Explicit guard
         raise ValueError(f"Engine '{k}' is not supported for European Digital options")
 
@@ -422,9 +390,7 @@ class AmericanVanillaOption(EquityOption):
 
     strike: float
     maturity: Date
-    engine_params: OptionEngineParameters = field(
-        default_factory=OptionEngineParameters.baw
-    )
+    engine_params: OptionEngineParameters = field(default_factory=OptionEngineParameters.baw)
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -454,9 +420,7 @@ class AmericanVanillaOption(EquityOption):
         if k == "bjerksund":
             return BjerksundStenslandApproximationEngine(process)
         if k == "fd":
-            return FdBlackScholesVanillaEngine(
-                process, int(self.engine_params.nt), int(self.engine_params.nx)
-            )
+            return FdBlackScholesVanillaEngine(process, int(self.engine_params.nt), int(self.engine_params.nx))
         if k == "tree":
             tag = self.engine_params.tree_tag()
             return BinomialVanillaEngine(process, tag, int(self.engine_params.steps))
@@ -503,13 +467,9 @@ class BermudanVanillaOption(EquityOption):
         k = self.engine_params.kind
         if self.is_expired:
             tag = self.engine_params.tree_tag(default="LR")
-            return BinomialVanillaEngine(
-                process, tag, max(3, int(self.engine_params.steps or 801))
-            )
+            return BinomialVanillaEngine(process, tag, max(3, int(self.engine_params.steps or 801)))
         elif k == "fd":
-            return FdBlackScholesVanillaEngine(
-                process, int(self.engine_params.nt), int(self.engine_params.nx)
-            )
+            return FdBlackScholesVanillaEngine(process, int(self.engine_params.nt), int(self.engine_params.nx))
         elif k == "tree":
             tag = self.engine_params.tree_tag()
             return BinomialVanillaEngine(process, tag, int(self.engine_params.steps))

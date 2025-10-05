@@ -1,5 +1,3 @@
-from dataclasses import FrozenInstanceError
-
 import math
 import numpy as np
 import pandas as pd
@@ -51,11 +49,12 @@ from QuantLib import (
     SwaptionHelper,
     SavedSettings,
 )
+from dataclasses import FrozenInstanceError
 
-from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg
-from pricingengine.currencies import CURRENCIES
-from pricingengine.instruments.interest_rate_swap import InterestRateSwap
-from pricingengine.instruments.swaption import Swaption
+from pricingengine import CURRENCIES
+from pricingengine.instruments import InterestRateSwap
+from pricingengine.instruments import Swaption
+from pricingengine.instruments.common import FixedLeg, FloatingLeg
 
 
 @pytest.fixture
@@ -127,8 +126,7 @@ def discount_curve_handle(valuation_date, calendar, day_counter):
             0.014
             + 0.010 * (1.0 - math.exp(-t_years / 2.5))  # rising belly
             + 0.003 * math.exp(-(((t_years - 9.0) / 5.0) ** 2))  # mild hump ~9y
-            - 0.001
-            * math.exp(-(((t_years - 30.0) / 10.0) ** 2))  # slight long-end ease
+            - 0.001 * math.exp(-(((t_years - 30.0) / 10.0) ** 2))  # slight long-end ease
         )
 
     zeros = [ois_zero(dc365.yearFraction(valuation_date, d)) for d in dates]
@@ -169,9 +167,7 @@ def index(
         + [Period(f"{y}Y") for y in range(4, 41)]
     )
 
-    fwd_dates = [valuation_date] + [
-        calendar.advance(valuation_date, p, ModifiedFollowing) for p in early + core
-    ]
+    fwd_dates = [valuation_date] + [calendar.advance(valuation_date, p, ModifiedFollowing) for p in early + core]
 
     # De-dup & keep only >= valuation_date
     fwd_dates = sorted({d for d in fwd_dates if d >= valuation_date})
@@ -192,9 +188,7 @@ def index(
         wiggle = 0.0005 * math.exp(-(((t_years - 7.0) / 4.0) ** 2))
         return ois_zero(t_years) + basis + wiggle
 
-    inst_fwds = [
-        ibor_inst_forward(dc365.yearFraction(valuation_date, d)) for d in fwd_dates
-    ]
+    inst_fwds = [ibor_inst_forward(dc365.yearFraction(valuation_date, d)) for d in fwd_dates]
 
     # Forwarding term structure: reference date = first pillar (= valuation_date)
     fwd_ts = YieldTermStructureHandle(ForwardCurve(fwd_dates, inst_fwds, day_counter))
@@ -239,10 +233,7 @@ def index(
 
     # Use today's forward for all past (and today) fixings curve projection for future
     today_fwd = fwd_from_curve(valuation_date)
-    fix_vals = [
-        (today_fwd if F <= valuation_date else fwd_from_curve(F))
-        for F in all_fixing_dates
-    ]
+    fix_vals = [(today_fwd if F <= valuation_date else fwd_from_curve(F)) for F in all_fixing_dates]
     idx.addFixings(tuple(all_fixing_dates), tuple(fix_vals), True)
 
     return idx
@@ -288,9 +279,7 @@ def irs(
         rate=fixed_rate,
     )
 
-    return InterestRateSwap(
-        paying_leg=fl, receiving_leg=fx, discount_curve=discount_curve_handle
-    )
+    return InterestRateSwap(paying_leg=fl, receiving_leg=fx, discount_curve=discount_curve_handle)
 
 
 @pytest.fixture
@@ -309,9 +298,7 @@ def normal_surface_handle():
 
     # Dense option tenors (≈ up to 10Y). Include months & years.
     opt_tenors = (
-        [Period("6M")]
-        + [Period(f"{m}M") for m in (9, 12, 18)]
-        + [Period(f"{y}Y") for y in range(2, 11)]
+        [Period("6M")] + [Period(f"{m}M") for m in (9, 12, 18)] + [Period(f"{y}Y") for y in range(2, 11)]
         # 2Y..10Y
     )
 
@@ -334,18 +321,14 @@ def normal_surface_handle():
             base = 0.0065  # 65bp
             term_decay = 0.0015 * min(oy, 5.0) / 5.0  # slight ↓ with option tenor
             long_swap_decay = 0.0010 * (sy / 30.0)  # slight ↑ with swap tenor
-            belly_bump = (
-                0.0007 * (1.0 - abs(sy - 5.0) / 5.0) if 0.0 <= sy <= 10.0 else 0.0
-            )
+            belly_bump = 0.0007 * (1.0 - abs(sy - 5.0) / 5.0) if 0.0 <= sy <= 10.0 else 0.0
             v = max(0.0001, base - term_decay + long_swap_decay + belly_bump)
             row.append(v)
         vols.append(row)
 
     # IMPORTANT: pass 'type=Normal' so Bachelier engine is happy.
     # Use the overload: (Calendar, BDC, PeriodVector, PeriodVector, Matrix vols, DayCounter, flatExtrap, type)
-    surf = SwaptionVolatilityMatrix(
-        NullCalendar(), Following, opt_tenors, swap_tenors, vols, dc, True, Normal
-    )
+    surf = SwaptionVolatilityMatrix(NullCalendar(), Following, opt_tenors, swap_tenors, vols, dc, True, Normal)
     surf.enableExtrapolation()
 
     h = RelinkableSwaptionVolatilityStructureHandle()
@@ -361,9 +344,7 @@ def sabr_cube(index) -> SwaptionVolatilityCube:
 
     # 1) ATM surface @ 20%
     atm_quotes = [[0.20 for _ in swap_tenors] for _ in opt_tenors]
-    atm = SwaptionVolatilityMatrix(
-        NullCalendar(), Following, opt_tenors, swap_tenors, atm_quotes, dc
-    )
+    atm = SwaptionVolatilityMatrix(NullCalendar(), Following, opt_tenors, swap_tenors, atm_quotes, dc)
 
     # 2) Smile spreads (rows=(opt,swap), cols=strikes) – all zeros
     strike_spreads = [-0.01, 0.0, 0.01]
@@ -448,9 +429,7 @@ def cube_handle(sabr_cube: SwaptionVolatilityCube):
     return h
 
 
-def scale_cube(
-    src_cube: SwaptionVolatilityCube, ibor_index, factor: float
-) -> SwaptionVolatilityCube:
+def scale_cube(src_cube: SwaptionVolatilityCube, ibor_index, factor: float) -> SwaptionVolatilityCube:
     """
     Scale ATM vols and smiles by `factor`, using base-class signatures:
       atmStrike(Date, Period)   [cube overload]
@@ -461,17 +440,13 @@ def scale_cube(
 
     opt_tenors = list(src_cube.optionTenors())
     swap_tenors = list(src_cube.swapTenors())
-    strike_spreads = list(
-        getattr(src_cube, "strikeSpreads", lambda: [-0.01, 0.0, 0.01])()
-    )
+    strike_spreads = list(getattr(src_cube, "strikeSpreads", lambda: [-0.01, 0.0, 0.01])())
 
     # ATM matrix (scaled)
     atm_matrix = []
     for opt in opt_tenors:
         row = []
-        opt_date = ibor_index.fixingCalendar().advance(
-            Settings.instance().evaluationDate, opt, ModifiedFollowing
-        )
+        opt_date = ibor_index.fixingCalendar().advance(Settings.instance().evaluationDate, opt, ModifiedFollowing)
         for sw in swap_tenors:
             k_atm = float(src_cube.atmStrike(opt_date, sw))
             atm = float(src_cube.volatility(opt_date, sw, k_atm, True))
@@ -481,9 +456,7 @@ def scale_cube(
     # Smile spreads (scaled)
     vol_spreads_qh = []
     for opt in opt_tenors:
-        opt_date = ibor_index.fixingCalendar().advance(
-            Settings.instance().evaluationDate, opt, ModifiedFollowing
-        )
+        opt_date = ibor_index.fixingCalendar().advance(Settings.instance().evaluationDate, opt, ModifiedFollowing)
         for sw in swap_tenors:
             k_atm = float(src_cube.atmStrike(opt_date, sw))
             atm = float(src_cube.volatility(opt_date, sw, k_atm, True))
@@ -496,9 +469,7 @@ def scale_cube(
             vol_spreads_qh.append(row)
 
     # Build ATM surface
-    atm_surface = SwaptionVolatilityMatrix(
-        cal, Following, opt_tenors, swap_tenors, atm_matrix, dc
-    )
+    atm_surface = SwaptionVolatilityMatrix(cal, Following, opt_tenors, swap_tenors, atm_matrix, dc)
 
     # Swap indices (ctor requires SwapIndex)
     ccy = ibor_index.currency()
@@ -648,9 +619,7 @@ def test_index(index, valuation_date, issue_date, maturity, tenor, calendar):
                 "end_date": end.ISO(),
                 "tau": tau,
                 "forward_pct": fix_or_proj * 100.0,
-                "curve_proj_pct": (proj_curve * 100.0)
-                if not math.isnan(proj_curve)
-                else np.nan,
+                "curve_proj_pct": (proj_curve * 100.0) if not math.isnan(proj_curve) else np.nan,
                 "t_fix_years": dc.yearFraction(valuation_date, F),
                 "t_start_years": dc.yearFraction(valuation_date, start),
                 "is_past": F <= valuation_date,
@@ -682,9 +651,7 @@ def test_index(index, valuation_date, issue_date, maturity, tenor, calendar):
 class TestSwaptionGeneric:
     def test_construct_rejects_plain_structure(self, irs):
         # Not a Handle<SwaptionVolatilityStructure> → must raise
-        plain = ConstantSwaptionVolatility(
-            0, NullCalendar(), Following, 0.2, Actual365Fixed()
-        )
+        plain = ConstantSwaptionVolatility(0, NullCalendar(), Following, 0.2, Actual365Fixed())
         with pytest.raises(TypeError):
             Swaption(irs=irs, vol_surface=plain)
 
@@ -698,9 +665,7 @@ class TestSwaptionGeneric:
         with pytest.raises(ValueError):
             Swaption(irs=irs, vol_surface=cube_handle, vol_model=bad_model)
 
-    def test_defaults_and_properties(
-        self, irs, cube_handle, valuation_date, issue_date, currency
-    ):
+    def test_defaults_and_properties(self, irs, cube_handle, valuation_date, issue_date, currency):
         s = Swaption(irs=irs, vol_surface=cube_handle)  # defaults: physical + bachelier
         assert s.valuation_date == valuation_date
         assert s.expiry == issue_date
@@ -714,12 +679,8 @@ class TestSwaptionGeneric:
             s.is_long = False  # type: ignore[attr-defined]
 
     def test_long_short_sign_flip(self, irs, cube_handle):
-        s_long = Swaption(
-            irs=irs, vol_surface=cube_handle, is_long=True, vol_model="black"
-        )
-        s_short = Swaption(
-            irs=irs, vol_surface=cube_handle, is_long=False, vol_model="black"
-        )
+        s_long = Swaption(irs=irs, vol_surface=cube_handle, is_long=True, vol_model="black")
+        s_short = Swaption(irs=irs, vol_surface=cube_handle, is_long=False, vol_model="black")
         v_long = s_long.npv()
         v_short = s_short.npv()
         assert abs(v_long + v_short) < 1e-10
@@ -743,12 +704,8 @@ class TestSwaptionGeneric:
         v1 = s.npv()
         assert v1 >= v0 - 1e-10
 
-    def test_accepts_surface_and_cube_handles(
-        self, irs, normal_surface_handle, cube_handle
-    ):
-        Swaption(
-            irs=irs, vol_surface=normal_surface_handle, vol_model="bachelier"
-        )  # smoke
+    def test_accepts_surface_and_cube_handles(self, irs, normal_surface_handle, cube_handle):
+        Swaption(irs=irs, vol_surface=normal_surface_handle, vol_model="bachelier")  # smoke
         Swaption(irs=irs, vol_surface=cube_handle, vol_model="black")  # smoke
 
     def test_repr_doesnt_crash(self, irs, cube_handle):
@@ -773,16 +730,12 @@ class TestSwaptionDomain:
     def test_european_pricing_finite(self, request, irs, model):
         """European pricing returns finite, non-negative NPV for both models."""
         handle = request.getfixturevalue(MODEL_HANDLE[model])
-        s = Swaption(
-            irs=irs, vol_surface=handle, vol_model=model, settlement="physical"
-        )
+        s = Swaption(irs=irs, vol_surface=handle, vol_model=model, settlement="physical")
         v = s.npv()
         assert math.isfinite(v)
         assert v >= 0.0
 
-    def make_union_time_grid(
-        self, irs, exercise_dates, target_steps: int = 1200, include_float: bool = True
-    ):
+    def make_union_time_grid(self, irs, exercise_dates, target_steps: int = 1200, include_float: bool = True):
         """
         Build a grid with mandatory nodes at:
           - t=0
@@ -792,9 +745,7 @@ class TestSwaptionDomain:
         Times are computed with the discount curve's timeFromReference, matching the engine.
         """
         eval_date = Settings.instance().evaluationDate
-        ts = (
-            irs.discount_curve.currentLink()
-        )  # underlying term structure used by HW/tree
+        ts = irs.discount_curve.currentLink()  # underlying term structure used by HW/tree
 
         def t(d):
             return float(ts.timeFromReference(d))  # guarantees exact consistency
@@ -896,9 +847,7 @@ class TestSwaptionDomain:
         assert v_ber1 <= v_ber2
 
     @pytest.mark.parametrize("model", ["black", "bachelier"])
-    def test_bermudan_removing_exercise_dates_never_increases_price(
-        self, request, irs, model, issue_date
-    ):
+    def test_bermudan_removing_exercise_dates_never_increases_price(self, request, irs, model, issue_date):
         """
         Hold the HW model fixed. With the same (a, sigma) and the same tree.
         Same time grid.
@@ -981,9 +930,7 @@ class TestSwaptionDomain:
             expiries=[irs.issue_date - Period("3M")],
             vol_model=model,
         )
-        long_ = Swaption(
-            irs=irs, vol_surface=handle, expiries=[irs.issue_date], vol_model=model
-        )
+        long_ = Swaption(irs=irs, vol_surface=handle, expiries=[irs.issue_date], vol_model=model)
         v_short = short.npv()
         v_long = long_.npv()
         assert v_long >= v_short - 1e-10
@@ -1035,9 +982,7 @@ class TestSwaptionDomain:
             day_counter=day_counter,
             rate=0.0,
         )
-        irs_tmp = InterestRateSwap(
-            paying_leg=fl, receiving_leg=fx_tmp, discount_curve=discount_curve_handle
-        )
+        irs_tmp = InterestRateSwap(paying_leg=fl, receiving_leg=fx_tmp, discount_curve=discount_curve_handle)
         fair = irs_tmp.vanilla().fairRate()
 
         # ATM payer/receiver swaptions (expiry at swap start)
@@ -1070,12 +1015,8 @@ class TestSwaptionDomain:
             discount_curve=discount_curve_handle,
         )
 
-        sp0 = Swaption(
-            irs=payer_atm, vol_surface=handle, vol_model=model, expiries=[issue_date]
-        ).npv()
-        sr0 = Swaption(
-            irs=receiver_atm, vol_surface=handle, vol_model=model, expiries=[issue_date]
-        ).npv()
+        sp0 = Swaption(irs=payer_atm, vol_surface=handle, vol_model=model, expiries=[issue_date]).npv()
+        sr0 = Swaption(irs=receiver_atm, vol_surface=handle, vol_model=model, expiries=[issue_date]).npv()
 
         dK = dK_bp * 1e-4  # convert bp to rate
 
@@ -1090,12 +1031,8 @@ class TestSwaptionDomain:
             day_counter=day_counter,
             rate=fair + dK,
         )
-        payer_shifted = InterestRateSwap(
-            paying_leg=fx_shift, receiving_leg=fl, discount_curve=discount_curve_handle
-        )
-        receiver_shifted = InterestRateSwap(
-            paying_leg=fl, receiving_leg=fx_shift, discount_curve=discount_curve_handle
-        )
+        payer_shifted = InterestRateSwap(paying_leg=fx_shift, receiving_leg=fl, discount_curve=discount_curve_handle)
+        receiver_shifted = InterestRateSwap(paying_leg=fl, receiving_leg=fx_shift, discount_curve=discount_curve_handle)
 
         sp = Swaption(
             irs=payer_shifted,
@@ -1133,9 +1070,7 @@ class TestSwaptionDomain:
         assert isinstance(eng_b, BlackSwaptionEngine)
 
         # Bachelier → BachelierSwaptionEngine
-        s_norm = Swaption(
-            irs=irs, vol_surface=normal_surface_handle, vol_model="bachelier"
-        )
+        s_norm = Swaption(irs=irs, vol_surface=normal_surface_handle, vol_model="bachelier")
         eng_n = s_norm._engine_european()
         assert isinstance(eng_n, BachelierSwaptionEngine)
 
@@ -1155,17 +1090,11 @@ class TestSwaptionDomain:
         dh = s.irs.discount_curve
 
         if model == "bachelier":
-            ql_swaption.setPricingEngine(
-                BachelierSwaptionEngine(
-                    dh, QuoteHandle(SimpleQuote(vol)), h.dayCounter()
-                )
-            )
+            ql_swaption.setPricingEngine(BachelierSwaptionEngine(dh, QuoteHandle(SimpleQuote(vol)), h.dayCounter()))
         else:
             # Use shift from the surface if available
             surf = s.vol_surface.currentLink()
-            opt_date = s.irs.floating_leg.index.fixingCalendar().adjust(
-                s.expiry, ModifiedFollowing
-            )
+            opt_date = s.irs.floating_leg.index.fixingCalendar().adjust(s.expiry, ModifiedFollowing)
             v = irs.vanilla()  # needed to keep other variable alive else C++ crash
             sch = v.fixedSchedule()
             months = 12 * (sch.endDate().year() - sch.startDate().year()) + (
@@ -1177,9 +1106,7 @@ class TestSwaptionDomain:
             except Exception:
                 shift = 0.0
             ql_swaption.setPricingEngine(
-                BlackSwaptionEngine(
-                    dh, QuoteHandle(SimpleQuote(vol)), h.dayCounter(), float(shift)
-                )
+                BlackSwaptionEngine(dh, QuoteHandle(SimpleQuote(vol)), h.dayCounter(), float(shift))
             )
 
         got = float(ql_swaption.NPV())
@@ -1203,9 +1130,7 @@ class TestSwaptionDomain:
         # Ensure cube APIs are callable and coherent at a sample node
         opt = list(sabr_cube.optionTenors())[0]
         sw = list(sabr_cube.swapTenors())[0]
-        opt_date = index.fixingCalendar().advance(
-            Settings.instance().evaluationDate, opt, ModifiedFollowing
-        )
+        opt_date = index.fixingCalendar().advance(Settings.instance().evaluationDate, opt, ModifiedFollowing)
         k = float(sabr_cube.atmStrike(opt_date, sw))
         v = float(sabr_cube.volatility(opt_date, sw, k, True))
         sh = float(sabr_cube.shift(opt_date, sw))
@@ -1222,9 +1147,7 @@ class TestSwaptionDomain:
         # Pick a grid node
         opt = list(cube.optionTenors())[0]
         sw = list(cube.swapTenors())[0]
-        opt_date = index.fixingCalendar().advance(
-            Settings.instance().evaluationDate, opt, ModifiedFollowing
-        )
+        opt_date = index.fixingCalendar().advance(Settings.instance().evaluationDate, opt, ModifiedFollowing)
         # ATM strike and date-based vol
         k_atm_d = float(cube.atmStrike(opt_date, sw))
         v_date = float(cube.volatility(opt_date, sw, k_atm_d, True))
@@ -1239,9 +1162,7 @@ class TestSwaptionDomain:
         try:
             v_tenor = float(cube.volatility(opt, sw, k_atm_d, ShiftedLognormal, shift))
         except TypeError:
-            pytest.skip(
-                "Tenor-based volatility overload not available in this QuantLib build."
-            )
+            pytest.skip("Tenor-based volatility overload not available in this QuantLib build.")
             return
 
         assert abs(v_date - v_tenor) < 1e-8
@@ -1250,9 +1171,7 @@ class TestSwaptionDomain:
     # D) CURVES, FIXINGS, CALENDARS
     # -----------------------------
 
-    def test_fixing_coverage_never_throws(
-        self, index, issue_date, maturity, tenor, calendar
-    ):
+    def test_fixing_coverage_never_throws(self, index, issue_date, maturity, tenor, calendar):
         """All fixing dates implied by the swap schedule are retrievable."""
         sch = Schedule(
             issue_date,
@@ -1268,9 +1187,7 @@ class TestSwaptionDomain:
             f = index.fixingDate(d)
             _ = index.fixing(f)  # should not throw
 
-    def test_discounting_consistency_in_atm(
-        self, irs, normal_surface_handle, valuation_date
-    ):
+    def test_discounting_consistency_in_atm(self, irs, normal_surface_handle, valuation_date):
         """Changing the discount curve should change the ATM strike computed via SwapIndex."""
         s = Swaption(irs=irs, vol_surface=normal_surface_handle, vol_model="bachelier")
         opt = Period("6M")
@@ -1285,17 +1202,13 @@ class TestSwaptionDomain:
 
         # Rebuild IRS with a bumped flat discount curve (same index)
         dc = Actual365Fixed()
-        bumped = YieldTermStructureHandle(
-            FlatForward(irs.valuation_date, QuoteHandle(SimpleQuote(0.0050)), dc)
-        )
+        bumped = YieldTermStructureHandle(FlatForward(irs.valuation_date, QuoteHandle(SimpleQuote(0.0050)), dc))
         irs_bump = InterestRateSwap(
             paying_leg=irs.paying_leg,
             receiving_leg=irs.receiving_leg,
             discount_curve=bumped,
         )
-        s2 = Swaption(
-            irs=irs_bump, vol_surface=normal_surface_handle, vol_model="bachelier"
-        )
+        s2 = Swaption(irs=irs_bump, vol_surface=normal_surface_handle, vol_model="bachelier")
         k2 = s2._atm_strike_for(opt, sw)
         assert abs(k2 - k1) > 1e-10
 
@@ -1316,9 +1229,7 @@ class TestSwaptionDomain:
         assert adj <= irs.issue_date
 
         # Price: now the engine is happy
-        s = Swaption(
-            irs=irs, vol_surface=cube_handle, expiries=[exp], vol_model="black"
-        )
+        s = Swaption(irs=irs, vol_surface=cube_handle, expiries=[exp], vol_model="black")
         assert math.isfinite(s.npv())
 
     # -----------------------------
@@ -1329,9 +1240,7 @@ class TestSwaptionDomain:
         """_calibrate_hw returns finite params Bermudan NPV finite."""
         # 2 exercise dates (≤ swap start)
         exps = [irs.issue_date - Period("3M"), irs.issue_date]
-        sw = Swaption(
-            irs=irs, vol_surface=cube_handle, vol_model="black", expiries=exps
-        )
+        sw = Swaption(irs=irs, vol_surface=cube_handle, vol_model="black", expiries=exps)
         model = sw._calibrate_hw()
 
         a, s = map(float, list(model.params())[:2])
@@ -1342,9 +1251,7 @@ class TestSwaptionDomain:
         v_ber = sw.npv()  # Tree engine path is used
         assert math.isfinite(v_ber)
 
-    def test_hw_basket_sensitivity_smooth(
-        self, irs, cube_handle, issue_date, valuation_date
-    ):
+    def test_hw_basket_sensitivity_smooth(self, irs, cube_handle, issue_date, valuation_date):
         """
         Change the calibration basket (use 2 helpers manually) and ensure
         Bermudan NPV stays reasonable vs default calibration.
@@ -1372,18 +1279,14 @@ class TestSwaptionDomain:
         model_alt = HullWhite(dh)
         eng_alt = JamshidianSwaptionEngine(model_alt)
 
-        st = (
-            s_def._required_swap_len_period()
-        )  # swap tenor of the underlying (in months → Period)
+        st = s_def._required_swap_len_period()  # swap tenor of the underlying (in months → Period)
         basket = [(Period("6M"), st), (Period("1Y"), st), (Period("2Y"), st)]
         helpers = []
         for ot, st in basket:
             # ATM strike via your helper (multi-curve consistent)
             k_atm = Swaption(irs=irs, vol_surface=cube_handle)._atm_strike_for(ot, st)
             # Vol via (Date, Period, strike, extrap=True)
-            opt_date = idx.fixingCalendar().advance(
-                irs.valuation_date, ot, ModifiedFollowing
-            )
+            opt_date = idx.fixingCalendar().advance(irs.valuation_date, ot, ModifiedFollowing)
             vol = float(surf.volatility(opt_date, st, k_atm, True))
             q = QuoteHandle(SimpleQuote(vol))
 
@@ -1516,9 +1419,7 @@ class TestSwaptionDomain:
         iv = s.implied_volatility(price, min_vol=1e-6, max_vol=2.0)
         assert 1e-6 <= iv <= 2.0
 
-    def test_near_expiry_zero_price_and_zero_impv(
-        self, irs, cube_handle, valuation_date
-    ):
+    def test_near_expiry_zero_price_and_zero_impv(self, irs, cube_handle, valuation_date):
         """If evaluationDate >= expiry → NPV=0 and implied vol returns 0."""
         # Force expiry today (or earlier)
         s = Swaption(
@@ -1573,9 +1474,7 @@ class TestSwaptionDomain:
             day_counter=day_counter,
             rate=0.0,
         )
-        irs_tmp = InterestRateSwap(
-            paying_leg=fl, receiving_leg=fx_tmp, discount_curve=discount_curve_handle
-        )
+        irs_tmp = InterestRateSwap(paying_leg=fl, receiving_leg=fx_tmp, discount_curve=discount_curve_handle)
         fair = irs_tmp.vanilla().fairRate()
 
         # Payer swaption (call on swap rate)
@@ -1651,9 +1550,7 @@ class TestSwaptionDomain:
 
         assert sr_hi.npv() >= sr_lo.npv() - 1e-10  # put ↑ when K ↑
 
-    def test_negative_rates_with_bachelier_run_and_solve(
-        self, valuation_date, maturity
-    ):
+    def test_negative_rates_with_bachelier_run_and_solve(self, valuation_date, maturity):
         """
         Build a tiny world with negative forwards/zeros and check that
         Bachelier pricing + implied vol works.
@@ -1667,9 +1564,7 @@ class TestSwaptionDomain:
 
         # Discount curve: flat -0.25%
         disc = YieldTermStructureHandle(
-            FlatForward(
-                valuation_date, QuoteHandle(SimpleQuote(-0.0025)), Actual365Fixed()
-            )
+            FlatForward(valuation_date, QuoteHandle(SimpleQuote(-0.0025)), Actual365Fixed())
         )
         disc.currentLink().enableExtrapolation()
 
@@ -1680,9 +1575,7 @@ class TestSwaptionDomain:
             + [Period(f"{m}M") for m in range(1, 37)]
             + [Period(f"{y}Y") for y in range(4, 41)]
         )
-        fwd_dates = [valuation_date] + [
-            cal.advance(valuation_date, t, ModifiedFollowing) for t in tenors
-        ]
+        fwd_dates = [valuation_date] + [cal.advance(valuation_date, t, ModifiedFollowing) for t in tenors]
         fwd_dates = sorted(set(d for d in fwd_dates if d >= valuation_date))
         fwds = [-0.001 for _ in fwd_dates]
         fwd_ts = YieldTermStructureHandle(ForwardCurve(fwd_dates, fwds, dc))
@@ -1723,10 +1616,7 @@ class TestSwaptionDomain:
             return (fwd_ts.discount(start) / fwd_ts.discount(end) - 1.0) / tau
 
         today_fwd = fwd_from_curve(valuation_date)
-        vals = [
-            today_fwd if F <= valuation_date else fwd_from_curve(F)
-            for F in all_fixing_dates
-        ]
+        vals = [today_fwd if F <= valuation_date else fwd_from_curve(F) for F in all_fixing_dates]
         idx.addFixings(tuple(all_fixing_dates), tuple(vals), True)
 
         # Build an IRS (par strike will be slightly negative)
@@ -1752,9 +1642,7 @@ class TestSwaptionDomain:
             day_counter=dc,
             rate=0.0,
         )
-        irs_tmp = InterestRateSwap(
-            paying_leg=fl, receiving_leg=fx_tmp, discount_curve=disc
-        )
+        irs_tmp = InterestRateSwap(paying_leg=fl, receiving_leg=fx_tmp, discount_curve=disc)
         fair = irs_tmp.vanilla().fairRate()  # should be ≤ 0 in this setup
 
         fx = FixedLeg(
@@ -1845,8 +1733,7 @@ def _approx_eq(x, target, abs_tol, rel_tol):
 class TestSwaptionGolden:
     @pytest.mark.skipif(
         GOLDEN["env"]["quantlib_version"] is not None
-        and getattr(__import__("QuantLib"), "QL_VERSION_STR", None)
-        != GOLDEN["env"]["quantlib_version"],
+        and getattr(__import__("QuantLib"), "QL_VERSION_STR", None) != GOLDEN["env"]["quantlib_version"],
         reason="QuantLib version mismatch with recorded golden numbers",
     )
     def test_golden_numbers(self, irs, cube_handle, normal_surface_handle):
@@ -1860,50 +1747,33 @@ class TestSwaptionGolden:
         iv_b = s_b.implied_volatility(v_b)
 
         # Bachelier (normal)
-        s_n = Swaption(
-            irs=irs, vol_surface=normal_surface_handle, vol_model="bachelier"
-        )
+        s_n = Swaption(irs=irs, vol_surface=normal_surface_handle, vol_model="bachelier")
         v_n = s_n.npv()
         iv_n = s_n.implied_volatility(v_n)
 
         # If you haven't filled values yet, print once then fail with guidance.
-        if any(
-            GOLDEN[k]["npv"] is None or GOLDEN[k]["iv"] is None
-            for k in ("black", "bachelier")
-        ):
+        if any(GOLDEN[k]["npv"] is None or GOLDEN[k]["iv"] is None for k in ("black", "bachelier")):
             import QuantLib as ql
 
             print("\n=== RECORD THESE GOLDEN NUMBERS ===")
             print(f"QuantLib version: {getattr(ql, 'QL_VERSION_STR', 'unknown')}")
             print(f"Black     NPV = {v_b:.15f},  IV = {iv_b:.10f}")
             print(f"Bachelier NPV = {v_n:.15f},  IV = {iv_n:.10f}")
-            pytest.fail(
-                "Fill GOLDEN[...] with the printed values and set an optional QuantLib version."
-            )
+            pytest.fail("Fill GOLDEN[...] with the printed values and set an optional QuantLib version.")
 
         # ---- Assertions (NPV & IV) ----
         gb = GOLDEN["black"]
         gn = GOLDEN["bachelier"]
 
-        assert _approx_eq(v_b, gb["npv"], gb["abs_tol"], gb["rel_tol"]), (
-            f"Black NPV {v_b} != golden {gb['npv']}"
-        )
-        assert _approx_eq(iv_b, gb["iv"], 1e-10, 5e-8), (
-            f"Black IV  {iv_b} != golden {gb['iv']}"
-        )
+        assert _approx_eq(v_b, gb["npv"], gb["abs_tol"], gb["rel_tol"]), f"Black NPV {v_b} != golden {gb['npv']}"
+        assert _approx_eq(iv_b, gb["iv"], 1e-10, 5e-8), f"Black IV  {iv_b} != golden {gb['iv']}"
 
-        assert _approx_eq(v_n, gn["npv"], gn["abs_tol"], gn["rel_tol"]), (
-            f"Bachelier NPV {v_n} != golden {gn['npv']}"
-        )
-        assert _approx_eq(iv_n, gn["iv"], 1e-10, 5e-8), (
-            f"Bachelier IV  {iv_n} != golden {gn['iv']}"
-        )
+        assert _approx_eq(v_n, gn["npv"], gn["abs_tol"], gn["rel_tol"]), f"Bachelier NPV {v_n} != golden {gn['npv']}"
+        assert _approx_eq(iv_n, gn["iv"], 1e-10, 5e-8), f"Bachelier IV  {iv_n} != golden {gn['iv']}"
 
 
 class TestSwaptionExpiryAndCoverage:
-    def test_zero_value_on_and_after_expiry(
-        self, irs, cube_handle, calendar, issue_date
-    ):
+    def test_zero_value_on_and_after_expiry(self, irs, cube_handle, calendar, issue_date):
         """
         Price should be 0.0 if valuation is on/after expiry.
         """
@@ -1926,18 +1796,14 @@ class TestSwaptionExpiryAndCoverage:
             assert s.implied_volatility(0.0) == 0.0
 
             # After expiry (next business day)
-            settings.evaluationDate = calendar.advance(
-                irs.issue_date, Period("1D"), ModifiedFollowing
-            )
+            settings.evaluationDate = calendar.advance(irs.issue_date, Period("1D"), ModifiedFollowing)
             assert s.is_expired is True
             assert s.npv() == 0.0
             assert s.implied_volatility(0.0) == 0.0
         finally:
             settings.evaluationDate = eval0
 
-    def test_zero_value_after_swap_maturity(
-        self, irs, cube_handle, calendar, issue_date
-    ):
+    def test_zero_value_after_swap_maturity(self, irs, cube_handle, calendar, issue_date):
         """
         Even if you move valuation after the swap maturity, the swaption has long expired → 0.0.
         """
@@ -1951,9 +1817,7 @@ class TestSwaptionExpiryAndCoverage:
         settings = Settings.instance()
         eval0 = settings.evaluationDate
         try:
-            after_maturity = calendar.advance(
-                irs.receiving_leg.maturity, Period("1D"), ModifiedFollowing
-            )
+            after_maturity = calendar.advance(irs.receiving_leg.maturity, Period("1D"), ModifiedFollowing)
             settings.evaluationDate = after_maturity
             assert s.is_expired is True
             assert s.npv() == 0.0
@@ -1984,20 +1848,14 @@ class TestSwaptionExpiryAndCoverage:
             Period("9M"),
             Period("12M"),
         ]
-        fwd_dates = [
-            calendar.advance(valuation_date, p, ModifiedFollowing) for p in tenors_short
-        ]
+        fwd_dates = [calendar.advance(valuation_date, p, ModifiedFollowing) for p in tenors_short]
         fwd_dates = sorted(set([valuation_date] + fwd_dates))
         fwds = [0.02 for _ in fwd_dates]  # arbitrary inst fwds
         short_fwd = YieldTermStructureHandle(ForwardCurve(fwd_dates, fwds, day_counter))
         # (no extrapolation on purpose)
 
         # --- Discount curve long enough enable extrapolation so failure isolates to fwd TS
-        disc = YieldTermStructureHandle(
-            FlatForward(
-                valuation_date, QuoteHandle(SimpleQuote(0.02)), Actual365Fixed()
-            )
-        )
+        disc = YieldTermStructureHandle(FlatForward(valuation_date, QuoteHandle(SimpleQuote(0.02)), Actual365Fixed()))
         disc.currentLink().enableExtrapolation()
 
         # --- Long-dated swap (10Y) starting in 3M → required end >> short_fwd.maxDate
@@ -2073,9 +1931,7 @@ class TestSwaptionExpiryAndCoverage:
             day_counter=day_counter,
             rate=0.025,
         )
-        irs_long = InterestRateSwap(
-            paying_leg=fl, receiving_leg=fx, discount_curve=disc
-        )
+        irs_long = InterestRateSwap(paying_leg=fl, receiving_leg=fx, discount_curve=disc)
 
         # Constructing the swaption MUST raise due to short forwarding curve horizon
         with pytest.raises(
@@ -2094,26 +1950,18 @@ class TestSwaptionExpiryAndCoverage:
 class TestHugues:
     def test_accepts_surface_handle(self, irs):
         ok = SwaptionVolatilityStructureHandle(
-            ConstantSwaptionVolatility(
-                0, NullCalendar(), Following, 0.2, Actual365Fixed()
-            )
+            ConstantSwaptionVolatility(0, NullCalendar(), Following, 0.2, Actual365Fixed())
         )
         Swaption(irs=irs, vol_surface=ok)  # should NOT raise
 
     def test_euro_monotone_in_vol(self, irs, cube_handle, sabr_cube):
-        swaption = Swaption(
-            irs=irs, vol_surface=cube_handle, vol_model="black", settlement="physical"
-        )
+        swaption = Swaption(irs=irs, vol_surface=cube_handle, vol_model="black", settlement="physical")
         v1 = swaption.npv()
 
         # Relink to a higher cube (scale vols 1.5x)
         h2 = RelinkableSwaptionVolatilityStructureHandle()
-        h2.linkTo(
-            scale_cube(sabr_cube, swaption.irs.floating_leg.index, 1.5)
-        )  # pass the CONCRETE cube
-        swaption_hi = Swaption(
-            irs=irs, vol_surface=h2, vol_model="black", settlement="physical"
-        )
+        h2.linkTo(scale_cube(sabr_cube, swaption.irs.floating_leg.index, 1.5))  # pass the CONCRETE cube
+        swaption_hi = Swaption(irs=irs, vol_surface=h2, vol_model="black", settlement="physical")
 
         v2 = swaption_hi.npv()
 
@@ -2133,9 +1981,7 @@ class TestHugues:
         v_eur = s_eur.npv()
 
         exps = [irs.issue_date, irs.issue_date - Period("6M")]
-        s_ber = Swaption(
-            irs=irs, vol_surface=cube_handle, expiries=exps, vol_model="black"
-        )
+        s_ber = Swaption(irs=irs, vol_surface=cube_handle, expiries=exps, vol_model="black")
         v_ber = s_ber.npv()
 
         print("\n")
@@ -2144,9 +1990,7 @@ class TestHugues:
 
         assert v_ber >= v_eur - 1e-10
 
-    def test_bermudan_ge_european_bachelier(
-        self, irs, issue_date, normal_surface_handle
-    ):
+    def test_bermudan_ge_european_bachelier(self, irs, issue_date, normal_surface_handle):
         s_eur = Swaption(
             irs=irs,
             vol_surface=normal_surface_handle,

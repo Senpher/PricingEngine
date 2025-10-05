@@ -1,25 +1,39 @@
 """PricingEngine public API."""
 
-from .cashflows import FixedLeg, FloatingLeg, SwapLeg
-from .indices import make_forecast_index
+from QuantLib import Currency
+
 from .instruments import (
-    EquityOption,
+    EuropeanVanillaOption,
+    AmericanVanillaOption,
+    BermudanVanillaOption,
+    EuropeanDigitalOption,
+    FXEuropeanVanillaOption,
+    FXAmericanVanillaOption,
+    FXBermudanVanillaOption,
+    FXEuropeanDigitalOption,
     FxForward,
     Instrument,
     InterestRateSwap,
     Swaption,
 )
+from .instruments.common import FixedLeg, FloatingLeg, SwapLeg
 from .termstructures import CurveNodes
 
+CURRENCIES = {c().code(): c() for c in Currency.__subclasses__()}
+
 __all__ = [
+    "CURRENCIES",
     "CurveNodes",
-    "make_forecast_index",
-    "SwapLeg",
-    "FixedLeg",
-    "FloatingLeg",
     "Instrument",
     "InterestRateSwap",
     "FxForward",
-    "EquityOption",
+    "EuropeanVanillaOption",
+    "AmericanVanillaOption",
+    "BermudanVanillaOption",
+    "EuropeanDigitalOption",
+    "FXEuropeanVanillaOption",
+    "FXAmericanVanillaOption",
+    "FXBermudanVanillaOption",
+    "FXEuropeanDigitalOption",
     "Swaption",
 ]
