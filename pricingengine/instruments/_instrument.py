@@ -1,17 +1,34 @@
+import warnings
 from abc import ABC, abstractmethod
 
 
 class Instrument(ABC):
-    """Abstract base class for all instrument objects."""
+    """Abstract base class for all priced instruments."""
 
     @property
     @abstractmethod
     def is_expired(self) -> bool:
-        pass
+        """True if, by convention, the instrument should have zero value."""
+        raise NotImplementedError
 
     @abstractmethod
-    def mark_to_market(self, *args, **kwargs) -> float | None:
-        if self.is_expired:
-            return 0.0
-        else:
-            return None
+    def npv(self, *args, **kwargs) -> float:
+        """
+        Present value in the instrument's pricing currency.
+
+        Convention: subclasses are responsible for returning 0.0 when
+        `self.is_expired` is True (so callers don’t need to check).
+        """
+        raise NotImplementedError
+
+    # --- Backward compatibility alias ---
+    def mark_to_market(self, *args, **kwargs) -> float:
+        """
+        Deprecated: use `npv(...)` instead.
+        """
+        warnings.warn(
+            "Instrument.mark_to_market(...) is deprecated; use npv(...) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.npv(*args, **kwargs)
