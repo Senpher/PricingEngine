@@ -12,12 +12,11 @@ from QuantLib import (
 )
 from datetime import date
 
+from portfolioengine.data_structures import fx_base_price_invert, ql_eval_date, MarketDataMapper
+from portfolioengine.positions import ClientPosition
 from pricingengine.instruments.fx_forward import (
     FxForward,
 )
-from .client_positions import ClientPosition
-from ..data_structures.ql_mapping import fx_base_price_invert, ql_eval_date
-from ..data_structures.market_data_mapper import MarketDataMapper
 
 
 class FXForward(ClientPosition):
@@ -75,7 +74,7 @@ class FXForward(ClientPosition):
         self.spot_rate = None
 
     # ---------------- core valuation ----------------
-    def valuePosition(self) -> float:
+    def value_position(self) -> float:
         with ql_eval_date(self.ql_value_date):
             self.discountCurveData.init_curve(self.ql_value_date, self.day_count)
             self.baseFXPointsCurveData.init_curve(self.ql_value_date, self.day_count)
@@ -153,7 +152,7 @@ class FXForward(ClientPosition):
 
         return pv
 
-    def getUsedRiskFactorDict(self) -> dict:
+    def get_used_risk_factor_dict(self) -> dict:
         return {
             "spot_rate": self.spot_rate,
             "forward_rate": self.forward_rate,
@@ -161,7 +160,7 @@ class FXForward(ClientPosition):
         }
 
     def MTM(self) -> tuple[float, dict, None]:
-        mtm = self.valuePosition()
-        used_risk_factors = self.getUsedRiskFactorDict()
+        mtm = self.value_position()
+        used_risk_factors = self.get_used_risk_factor_dict()
         warning_message = None
         return mtm, used_risk_factors, warning_message

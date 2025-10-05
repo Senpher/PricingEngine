@@ -3,11 +3,11 @@ from QuantLib import (
 )
 from datetime import date
 
-from .client_positions import ClientPosition
-from ..data_structures.ql_mapping import (
+from portfolioengine.data_structures import (
     QlDayCountMapper,
     ql_eval_date,
 )
+from portfolioengine.positions import ClientPosition
 
 
 class Repo(ClientPosition):
@@ -49,12 +49,12 @@ class Repo(ClientPosition):
         )  # input dates as e.g. "2024-02-13" and convert in instantiation
         self.ql_issue_date = Date(self.issue_date.day, self.issue_date.month, self.issue_date.year)
 
-    def valuePosition(
+    def value_position(
         self,
     ) -> float:  # Risk neutral PV calc for risk. Unrelated to MTM of Repo for PCS
         return 0
 
-    def getUsedRiskFactorDict(self) -> dict:
+    def get_used_risk_factor_dict(self) -> dict:
         pass
 
     def MTM(self) -> tuple[float, dict, str]:  # "MTM" calc for PCS collateralization

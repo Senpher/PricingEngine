@@ -7,9 +7,9 @@ from QuantLib import Date
 from datetime import date
 from typing import Literal
 
-from .client_positions import ClientPosition
-from .equity_option import EquityOption as PortfolioEquityOption
-from ..data_structures.ql_mapping import ql_eval_date
+from portfolioengine.data_structures import ql_eval_date
+from portfolioengine.positions import ClientPosition
+from portfolioengine.positions import EquityOption as PortfolioEquityOption
 
 StyleKey = Literal["european", "american", "bermudan", "digital"]
 EngineKey = Literal["analytic", "fd", "baw", "bjerksund", "tree"]
@@ -104,7 +104,7 @@ class FXOption(ClientPosition):
         )
 
     # ------------- core valuation -------------
-    def valuePosition(self) -> float:
+    def value_position(self) -> float:
         """Build a portfolio EquityOption with mapped inputs and delegate pricing."""
         eq = PortfolioEquityOption(
             **self._eq_kwargs,
@@ -115,10 +115,10 @@ class FXOption(ClientPosition):
         )
 
         with ql_eval_date(self.ql_value_date):
-            mtm = eq.valuePosition()
+            mtm = eq.value_position()
 
         # Pass-through diagnostics + FX details
-        self._used = eq.getUsedRiskFactorDict() | {
+        self._used = eq.get_used_risk_factor_dict() | {
             "fx_spot": self.fx_spot,
             "fx_base_ccy": self.baseCCY,
             "fx_price_ccy": self.priceCCY,
@@ -128,20 +128,20 @@ class FXOption(ClientPosition):
         return float(mtm)
 
     def MTM(self) -> tuple[float, dict, None]:
-        pv = self.valuePosition()
-        return pv, self.getUsedRiskFactorDict(), None
+        pv = self.value_position()
+        return pv, self.get_used_risk_factor_dict(), None
 
-    def getUsedRiskFactorDict(self) -> dict:
+    def get_used_risk_factor_dict(self) -> dict:
         if not self._used:
-            _ = self.valuePosition()
+            _ = self.value_position()
         return dict(self._used)
 
     # ---- required interface bits ----
-    def getPosCurrency(self) -> str:
+    def get_pos_currency(self) -> str:
         return self.priceCCY
 
-    def getPosName(self) -> str:
+    def get_pos_name(self) -> str:
         return self.posName
 
-    def getPosType(self) -> str:
+    def get_pos_type(self) -> str:
         return "fx_option"

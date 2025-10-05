@@ -10,17 +10,17 @@ from QuantLib import (
     as_floating_rate_coupon,
 )
 from datetime import date
-from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg
 
-from pricingengine.instruments.interest_rate_swap import InterestRateSwap
-from .client_positions import ClientPosition
-from ..data_structures.ql_mapping import (
+from portfolioengine.data_structures import (
     QlDayCountMapper,
     QlSwapLegMapper,
     GenericIbor,
     ql_eval_date,
+    MarketDataMapper,
 )
-from ..data_structures.market_data_mapper import MarketDataMapper
+from portfolioengine.positions import ClientPosition
+from pricingengine.instruments import InterestRateSwap
+from pricingengine.instruments.common import FixedLeg, FloatingLeg
 
 
 class IRS(ClientPosition):
@@ -204,7 +204,7 @@ class IRS(ClientPosition):
         return leg_class(**kwargs)
 
     # ---------- public API ----------
-    def valuePosition(self) -> float:
+    def value_position(self) -> float:
         """
         Single entry point:
           - sets the QL global evaluation date via ql_eval_date
@@ -248,7 +248,7 @@ class IRS(ClientPosition):
           - calls valuePosition() to build & price
           - returns (PV, used_risk_factors, warning)
         """
-        pv = self.valuePosition()
+        pv = self.value_position()
         used_risk_factors = self._get_used_risk_factors()
         warning = self._get_warning()
         return pv, used_risk_factors, warning

@@ -3,34 +3,34 @@ from abc import ABC, abstractmethod
 
 class ClientPosition(ABC):
     @abstractmethod
-    def valuePosition(self) -> float:
+    def value_position(self) -> float:
         pass  # Here could make use of e.g. QuantLib for valuation
 
-    def setUpPosition(self) -> None:
+    def set_up_position(self) -> None:
         # Called after applying risk factors to calibrate position
         # e.g. (re)calculate z-spread for bonds to match dirty price.
         pass
 
-    def incrementValueDate(self, daysToAdd: int) -> None:
+    def increment_value_date(self, days_to_add: int) -> None:
         pass
 
-    def getPosName(self) -> str:
+    def get_pos_name(self) -> str:
         pass
 
-    def getPosCurrency(self) -> str:
+    def get_pos_currency(self) -> str:
         pass
 
-    def updateRiskFactors(self, riskFactorList: dict) -> None:
+    def update_risk_factors(self, risk_factor_list: dict) -> None:
         pass
 
-    def getPosType(self) -> str:
+    def get_pos_type(self) -> str:
         pass
 
-    def getNominal(self) -> float:
+    def get_nominal(self) -> float:
         pass
 
-    def getCalibratedSpread(self) -> float:
+    def get_calibrated_spread(self) -> float:
         pass
 
-    def getUsedRiskFactorDict(self) -> dict:
+    def get_used_risk_factor_dict(self) -> dict:
         pass

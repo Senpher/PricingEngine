@@ -17,17 +17,17 @@ from QuantLib import (
 from datetime import date
 from typing import Literal
 
+from portfolioengine.data_structures import ql_eval_date, MarketDataMapper
+from portfolioengine.positions import ClientPosition
+
 # pricingengine instruments
-from pricingengine.instruments.equity_option import (
+from pricingengine.instruments import (
     AmericanVanillaOption,
     BermudanVanillaOption,
     EuropeanDigitalOption,
     EuropeanVanillaOption,
-    OptionEngineParameters,
 )
-from .client_positions import ClientPosition
-from ..data_structures.ql_mapping import ql_eval_date
-from ..data_structures.market_data_mapper import MarketDataMapper
+from pricingengine.instruments.common import OptionEngineParameters
 
 
 class EquityOption(ClientPosition):
@@ -183,7 +183,7 @@ class EquityOption(ClientPosition):
         raise ValueError(f"Unknown engine '{key}' in engine_params")
 
     # ---------------- core valuation ----------------
-    def valuePosition(self) -> float:
+    def value_position(self) -> float:
         """
         Build QL objects and price with pricingengine instruments.
         """
@@ -307,11 +307,11 @@ class EquityOption(ClientPosition):
         return float(pv)
 
     def MTM(self) -> tuple[float, dict, None]:
-        mtm = self.valuePosition()
-        used = self.getUsedRiskFactorDict()
+        mtm = self.value_position()
+        used = self.get_used_risk_factor_dict()
         return mtm, used, None
 
-    def getUsedRiskFactorDict(self) -> dict:
+    def get_used_risk_factor_dict(self) -> dict:
         return {
             "spot": self.used_spot,
             "discount_factor": self.used_df,
