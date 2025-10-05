@@ -4,7 +4,7 @@ from .cashflows import FixedLeg, FloatingLeg, SwapLeg
 from .indices import make_forecast_index
 from .instruments import (
     EquityOption,
-    FXForward,
+    FxForward,
     Instrument,
     InterestRateSwap,
     Swaption,
@@ -19,7 +19,7 @@ __all__ = [
     "FloatingLeg",
     "Instrument",
     "InterestRateSwap",
-    "FXForward",
+    "FxForward",
     "EquityOption",
     "Swaption",
 ]
