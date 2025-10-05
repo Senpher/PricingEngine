@@ -1,7 +1,7 @@
-import numpy as np
-from QuantLib import Period, Date, DayCounter, BlackVarianceSurface, TARGET
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+from QuantLib import TARGET, BlackVarianceSurface, Date, DayCounter, Period
 
 
 @dataclass
@@ -18,10 +18,10 @@ class SurfaceData:
     ql_ref_date: Date = None
     ql_dayCounter: DayCounter = None
     # Surface indexing
-    mny_levels: Optional[List[float]] = None
-    mat_axis: Optional[List[Date]] = None
-    grid_positions: Dict[str, Tuple[int, int]] = field(default_factory=dict)
-    vol_grid: Optional[List[List[float]]] = None
+    mny_levels: list[float] | None = None
+    mat_axis: list[Date] | None = None
+    grid_positions: dict[str, tuple[int, int]] = field(default_factory=dict)
+    vol_grid: list[list[float]] | None = None
 
     def init_surface(self, ref_date: Date, ql_day_counter: DayCounter):
         # Init values and ql_maturities from the reference date.
@@ -65,7 +65,7 @@ class SurfaceData:
                     self.grid_positions[name] = (mny_index[m], mat_index[d])
 
     def ql_surface(  # Create a surface from the vol grid. Updating it before if riskFactorDict provided.
-        self, spot_rate: float, risk_factor_dict: Optional[dict] = None
+        self, spot_rate: float, risk_factor_dict: dict | None = None
     ) -> BlackVarianceSurface:
         grid = [row[:] for row in self.vol_grid]
         if risk_factor_dict:

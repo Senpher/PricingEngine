@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-import QuantLib as ql
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence, Tuple
+
+import QuantLib as ql
 
 
 @dataclass(frozen=True)
 class Curve:
     """Lightweight container for curve data points."""
 
-    dates: Tuple[ql.Date, ...]
+    dates: tuple[ql.Date, ...]
     day_counter: ql.DayCounter
-    quotes: Tuple[float, ...]
+    quotes: tuple[float, ...]
 
     def __init__(self, *, dates: Sequence[ql.Date], day_counter: ql.DayCounter, quotes: Sequence[float]) -> None:
         object.__setattr__(self, "dates", tuple(dates))

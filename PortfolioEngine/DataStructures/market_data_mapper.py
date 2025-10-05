@@ -1,9 +1,10 @@
-import numpy as np
-from QuantLib import Period, Days, Weeks, Months, Years
 from dataclasses import dataclass, field
-from typing import Optional, List
 
-from PortfolioEngine.DataStructures import CurveData, SurfaceData
+import numpy as np
+from QuantLib import Days, Months, Period, Weeks, Years
+
+from .curve import CurveData
+from .surface import SurfaceData
 
 
 @dataclass
@@ -14,8 +15,8 @@ class MarketDataMapper:
     @staticmethod
     def parse_tenors(
         series_names: list[str] | np.ndarray[tuple[int], np.dtype[np.float64]], tenors: list[str] | None
-    ) -> List[Period]:
-        ql_tenors: List[Optional[Period]] = [None] * len(series_names)
+    ) -> list[Period]:
+        ql_tenors: list[Period | None] = [None] * len(series_names)
 
         if tenors and tenors[0] is not None:  # assuming all-or-none
             for i, tenor in enumerate(tenors):
@@ -34,9 +35,9 @@ class MarketDataMapper:
     def add_curve_data(
         self,
         curve_name: str,
-        series_names: list[str] = None,
+        series_names: list[str] | None = None,
         maturities: np.ndarray = None,
-        tenors: list[str] = None,
+        tenors: list[str] | None = None,
         series_values: np.ndarray = None,
     ) -> None:  # Can add validation error if not same length of arrays/lists
         if series_names is None:  # create dummy array of length of either mat or tenor if no names are given.
@@ -44,11 +45,8 @@ class MarketDataMapper:
             maturities_len = len(maturities) if maturities is not None else 0
             series_names = np.empty(max(tenor_len, maturities_len))
 
-        if series_values is None:
-            # set to empty array of same length of no values added (default)
-            series_values = np.empty(len(series_names), dtype=object)
-        else:
-            series_values = np.array(series_values)  # Convert to np.array if passed as list
+        # Convert to np.array if passed as list
+        series_values = np.empty(len(series_names), dtype=object) if series_values is None else np.array(series_values)
 
         if maturities is None:
             maturities = np.empty(len(series_names))  # set to empty array of same length of no values added (default)
@@ -77,10 +75,10 @@ class MarketDataMapper:
     def add_surface_data(
         self,
         surface_name: str,
-        series_names: list[str] = None,
+        series_names: list[str] | None = None,
         maturities: np.ndarray = None,
         strikes: np.ndarray = None,  # moneyness
-        tenors: list[str] = None,
+        tenors: list[str] | None = None,
         series_values: np.ndarray = None,
     ) -> None:
         # Create dummy array of length of either mat or tenor if no names are given
@@ -91,10 +89,7 @@ class MarketDataMapper:
             max_len = max(tenor_len, maturities_len, strikes_len)
             series_names = np.empty(max_len, dtype=object)
 
-        if series_values is None:
-            series_values = np.empty(len(series_names))
-        else:
-            series_values = np.array(series_values)  # Convert to np.array if passed as list
+        series_values = np.empty(len(series_names), dtype=object) if series_values is None else np.array(series_values)
 
         if maturities is None:
             maturities = np.empty(len(series_names))
@@ -118,8 +113,8 @@ class MarketDataMapper:
         )
         self.surfaceDataMapping[surface_name] = surface_data
 
-    def get_curve_data(self, curve_name: str) -> Optional[CurveData]:
+    def get_curve_data(self, curve_name: str) -> CurveData | None:
         return self.curveDataMapping.get(curve_name, None)
 
-    def get_surface_data(self, surface_name: str) -> Optional[SurfaceData]:
+    def get_surface_data(self, surface_name: str) -> SurfaceData | None:
         return self.surfaceDataMapping.get(surface_name, None)

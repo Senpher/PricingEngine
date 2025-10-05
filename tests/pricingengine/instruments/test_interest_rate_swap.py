@@ -1,29 +1,30 @@
+from dataclasses import FrozenInstanceError
+
 import pytest
 from QuantLib import (
+    TARGET,
     Actual360,
+    Annual,
+    Calendar,
+    Continuous,
     Date,
+    DateGeneration,
+    DiscountingSwapEngine,
     ForwardCurve,
     IborIndex,
     ModifiedFollowing,
     Period,
-    Settings,
-    TARGET,
-    YieldTermStructureHandle,
-    DateGeneration,
     Preceding,
-    Schedule,
-    ZeroCurve,
-    SavedSettings,
-    Continuous,
-    SimpleQuote,
-    ZeroSpreadedTermStructure,
-    Annual,
-    DiscountingSwapEngine,
     QuoteHandle,
+    SavedSettings,
+    Schedule,
+    Settings,
+    SimpleQuote,
     Swap,
-    Calendar,
+    YieldTermStructureHandle,
+    ZeroCurve,
+    ZeroSpreadedTermStructure,
 )
-from dataclasses import FrozenInstanceError
 
 from PricingEngine.Instruments import InterestRateSwap
 from PricingEngine.Instruments.Common import (
@@ -33,7 +34,6 @@ from PricingEngine.Instruments.Common import (
     FixedLeg,
     FloatingLeg,
 )
-
 
 # -----------------------
 # Shared fixtures

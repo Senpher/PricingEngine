@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
+from functools import cached_property
+from math import exp, log
+from typing import Literal
+
 from QuantLib import (
     Date,
     DayCounter,
@@ -11,10 +17,6 @@ from QuantLib import (
     YieldTermStructureHandle,
     ZeroCurve,
 )
-from dataclasses import dataclass, replace
-from functools import cached_property
-from math import exp, log
-from typing import Literal, Sequence
 
 QuoteKind = Literal["zero", "discount", "forward", "flat"]
 CurveRole = Literal["discounting", "forecasting", "other"]
@@ -56,7 +58,7 @@ class CurveNodes:
 
     @property
     def nodes(self) -> tuple[tuple[Date, float], ...]:
-        return tuple((date, quote) for date, quote in zip(self.dates, self.quotes))
+        return tuple((date, quote) for date, quote in zip(self.dates, self.quotes, strict=False))
 
     @cached_property
     def yts_handle(self) -> YieldTermStructureHandle:
@@ -132,7 +134,7 @@ class CurveNodes:
 
         if self.quote_kind == "discount":
             new_discounts: list[float] = []
-            for d, df in zip(self.dates, self.quotes):
+            for d, df in zip(self.dates, self.quotes, strict=False):
                 t = self.day_counter.yearFraction(self.as_of, d)
                 if t <= 0.0:
                     new_discounts.append(df)  # protect as_of/near-0 times

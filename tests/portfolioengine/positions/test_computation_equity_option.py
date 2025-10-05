@@ -16,7 +16,8 @@ def test_integrate_and_compute_equity_option():
         "spot": 2600.22,
         "maturity": "2025-11-19",
         "discount_curve": {
-            # We don't have this data structed by tenors in RVS so using interpolated value directly with dummy tenor. Have to look into fetching this data properly at some point for PACE.
+            # We don't have this data structured by tenors in RVS so using interpolated value directly with dummy tenor.
+            # Have to look into fetching this data properly at some point for PACE.
             "tenors": [
                 "1D",
                 "1W",

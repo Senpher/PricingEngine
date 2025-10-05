@@ -1,28 +1,29 @@
 from __future__ import annotations
 
-from QuantLib import (
-    Date,
-    Settings,
-    YieldTermStructureHandle,
-    QuoteHandle,
-    FxSwapRateHelper,
-    SimpleQuote,
-    PiecewiseLogLinearDiscount,
-    Period,
-    Days,
-    Years,
-    Months,
-    Weeks,
-    DayCounter,
-    Actual365Fixed,
-    ModifiedFollowing,
-    Calendar,
-    TARGET,
-)
 from dataclasses import dataclass, replace
-from typing import List, Dict, Any
+from typing import Any
 
-from PricingEngine.Instruments.Common import Instrument, CURRENCIES
+from QuantLib import (
+    TARGET,
+    Actual365Fixed,
+    Calendar,
+    Date,
+    DayCounter,
+    Days,
+    FxSwapRateHelper,
+    ModifiedFollowing,
+    Months,
+    Period,
+    PiecewiseLogLinearDiscount,
+    QuoteHandle,
+    Settings,
+    SimpleQuote,
+    Weeks,
+    Years,
+    YieldTermStructureHandle,
+)
+
+from PricingEngine.Instruments.Common import CURRENCIES, Instrument
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -59,7 +60,7 @@ class FxForward(Instrument):
     # ------- market data inputs -------
     spot: QuoteHandle  # PRICE/BASE
     discount_domestic: YieldTermStructureHandle  # PRICE-currency (CSA) discount curve
-    fx_fwd_pts_curve: List[Dict[str, Any]]  # [{'tenor': '6M', 'points': 0.00310}, ...]
+    fx_fwd_pts_curve: list[dict[str, Any]]  # [{'tenor': '6M', 'points': 0.00310}, ...]
 
     # ------- market conventions (you can override per trade) -------
     calendar: Calendar = TARGET()
@@ -246,7 +247,7 @@ class FxForward(Instrument):
         return self.npv(breakdown=breakdown)
 
     # convenience "setter"
-    def with_forward(self, forward_price: float) -> "FxForward":
+    def with_forward(self, forward_price: float) -> FxForward:
         if forward_price <= 0:
             raise ValueError("'forward_price' must be positive")
         return replace(self, forward_price=forward_price)

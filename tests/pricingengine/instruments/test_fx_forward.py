@@ -1,25 +1,25 @@
 import dataclasses
+from dataclasses import FrozenInstanceError
 import math
+
 import pytest
 from QuantLib import (
+    TARGET,
     Actual360,
     Date,
+    Days,
     FlatForward,
-    SimpleQuote,
+    ModifiedFollowing,
+    Period,
     QuoteHandle,
+    SavedSettings,
+    Settings,
+    SimpleQuote,
     YieldTermStructureHandle,
     ZeroCurve,
-    Period,
-    TARGET,
-    Settings,
-    SavedSettings,
-    ModifiedFollowing,
-    Days,
 )
-from dataclasses import FrozenInstanceError
 
 from PricingEngine.Instruments import FxForward
-
 
 # ---------------------------
 # Helpers (local to tests)
@@ -159,7 +159,7 @@ def make_fx(as_of, spot_handle, flat_domestic, flat_foreign, base_ccy, price_ccy
                     convention=ModifiedFollowing,
                     end_of_month=False,
                 )
-                fx_pts_curve = [{"tenor": ten, "points": p} for ten, p in zip(tenors, pts)]
+                fx_pts_curve = [{"tenor": ten, "points": p} for ten, p in zip(tenors, pts, strict=False)]
             except Exception:
                 # Safe fallback: a single near-dated zero-point that won't
                 # query beyond finite curves; lets the constructor perform

@@ -1,58 +1,60 @@
+from dataclasses import FrozenInstanceError
 import math
+
 import numpy as np
 import pandas as pd
 import pytest
 from QuantLib import (
     TARGET,
-    Date,
-    Settings,
-    QuoteHandle,
-    SimpleQuote,
-    SwaptionVolatilityMatrix,
-    SabrSwaptionVolatilityCube,
-    RelinkableSwaptionVolatilityStructureHandle,
-    SwaptionVolatilityCube,
     Actual360,
-    Preceding,
-    IborIndex,
-    SwapIndex,
-    SwaptionVolatilityStructureHandle,
-    ConstantSwaptionVolatility,
-    NullCalendar,
-    Following,
     Actual365Fixed,
-    EndCriteria,
-    Compounded,
     Annual,
-    ZeroCurve,
-    ForwardCurve,
-    DateGeneration,
-    Schedule,
-    YieldTermStructureHandle,
-    Period,
-    ModifiedFollowing,
-    BlackCalibrationHelper,
-    LevenbergMarquardt,
-    Settlement,
-    Swaption as QLSwaption,
-    JamshidianSwaptionEngine,
-    HullWhite,
-    ShiftedLognormal,
-    EuropeanExercise,
-    Matrix,
-    BlackSwaptionEngine,
-    Months,
     BachelierSwaptionEngine,
+    BlackCalibrationHelper,
+    BlackSwaptionEngine,
+    Compounded,
+    ConstantSwaptionVolatility,
+    Date,
+    DateGeneration,
+    EndCriteria,
+    EuropeanExercise,
     FlatForward,
+    Following,
+    ForwardCurve,
+    HullWhite,
+    IborIndex,
+    JamshidianSwaptionEngine,
+    LevenbergMarquardt,
+    Matrix,
+    ModifiedFollowing,
+    Months,
     Normal,
-    TimeGrid,
-    SwaptionHelper,
+    NullCalendar,
+    Period,
+    Preceding,
+    QuoteHandle,
+    RelinkableSwaptionVolatilityStructureHandle,
+    SabrSwaptionVolatilityCube,
     SavedSettings,
+    Schedule,
+    Settings,
+    Settlement,
+    ShiftedLognormal,
+    SimpleQuote,
+    SwapIndex,
+    SwaptionHelper,
+    SwaptionVolatilityCube,
+    SwaptionVolatilityMatrix,
+    SwaptionVolatilityStructureHandle,
+    TimeGrid,
+    YieldTermStructureHandle,
+    ZeroCurve,
 )
-from dataclasses import FrozenInstanceError
+from QuantLib import (
+    Swaption as QLSwaption,
+)
 
-from PricingEngine.Instruments import InterestRateSwap
-from PricingEngine.Instruments import Swaption
+from PricingEngine.Instruments import InterestRateSwap, Swaption
 from PricingEngine.Instruments.Common import CURRENCIES, FixedLeg, FloatingLeg
 
 
@@ -230,7 +232,7 @@ def index(
 
     # Use today's forward for all past (and today) fixings curve projection for future
     today_fwd = fwd_from_curve(valuation_date)
-    fix_vals = [(today_fwd if F <= valuation_date else fwd_from_curve(F)) for F in all_fixing_dates]
+    fix_vals = [(today_fwd if valuation_date >= F else fwd_from_curve(F)) for F in all_fixing_dates]
     idx.addFixings(tuple(all_fixing_dates), tuple(fix_vals), True)
 
     return idx
@@ -597,7 +599,7 @@ def test_index(index, valuation_date, issue_date, maturity, tenor, calendar):
         end = index.maturityDate(start)
         tau = index.dayCounter().yearFraction(start, end)
         fix_or_proj = index.fixing(F)  # past => stored fixing future => projection
-        proj_curve = fwd_from_curve(F) if F > valuation_date else np.nan
+        proj_curve = fwd_from_curve(F) if valuation_date < F else np.nan
 
         rows.append(
             {
@@ -609,7 +611,7 @@ def test_index(index, valuation_date, issue_date, maturity, tenor, calendar):
                 "curve_proj_pct": (proj_curve * 100.0) if not math.isnan(proj_curve) else np.nan,
                 "t_fix_years": dc.yearFraction(valuation_date, F),
                 "t_start_years": dc.yearFraction(valuation_date, start),
-                "is_past": F <= valuation_date,
+                "is_past": valuation_date >= F,
             }
         )
 
@@ -1601,7 +1603,7 @@ class TestSwaptionDomain:
             return (fwd_ts.discount(start) / fwd_ts.discount(end) - 1.0) / tau
 
         today_fwd = fwd_from_curve(valuation_date)
-        vals = [today_fwd if F <= valuation_date else fwd_from_curve(F) for F in all_fixing_dates]
+        vals = [today_fwd if valuation_date >= F else fwd_from_curve(F) for F in all_fixing_dates]
         idx.addFixings(tuple(all_fixing_dates), tuple(vals), True)
 
         # Build an IRS (par strike will be slightly negative)

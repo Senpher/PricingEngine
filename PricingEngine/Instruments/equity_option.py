@@ -1,43 +1,48 @@
 from __future__ import annotations
 
-from QuantLib import (  # Core dates/settings
-    Date,
-    Period,
-    Settings,
-    SavedSettings,  # Market handles & helpers
-    QuoteHandle,
-    SimpleQuote,
-    YieldTermStructureHandle,
-    FlatForward,
-    BlackVolTermStructureHandle,
-    BlackConstantVol,
-    BlackScholesMertonProcess,  # Payoffs
-    PlainVanillaPayoff,
-    CashOrNothingPayoff,  # Exercises
-    EuropeanExercise,
-    AmericanExercise,
-    BermudanExercise,  # Engines
-    AnalyticEuropeanEngine,
-    BjerksundStenslandApproximationEngine,
-    BaroneAdesiWhaleyApproximationEngine,
-    FdBlackScholesVanillaEngine,
-    BinomialVanillaEngine,
-    VanillaOption as QLVanillaOption,
-    Option as QLOption,  # day count / comp
-    Actual365Fixed,
-    Simple,
-    Annual,
-    NullCalendar,
-)
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Tuple, Dict, Iterable, ClassVar
+from typing import ClassVar
+
+from QuantLib import (  # Core dates/settings
+    Actual365Fixed,
+    AmericanExercise,
+    AnalyticEuropeanEngine,
+    Annual,
+    BaroneAdesiWhaleyApproximationEngine,
+    BermudanExercise,  # Engines
+    BinomialVanillaEngine,
+    BjerksundStenslandApproximationEngine,
+    BlackConstantVol,
+    BlackScholesMertonProcess,  # Payoffs
+    BlackVolTermStructureHandle,
+    CashOrNothingPayoff,  # Exercises
+    Date,
+    EuropeanExercise,
+    FdBlackScholesVanillaEngine,
+    FlatForward,
+    NullCalendar,
+    Period,
+    PlainVanillaPayoff,
+    QuoteHandle,
+    SavedSettings,  # Market handles & helpers
+    Settings,
+    Simple,
+    SimpleQuote,
+    YieldTermStructureHandle,
+)
+from QuantLib import (
+    Option as QLOption,  # day count / comp
+)
+from QuantLib import (
+    VanillaOption as QLVanillaOption,
+)
 
 from PricingEngine.Instruments.Common import (
     Option,
     OptionEngineParameters,
 )
-
 
 # ============================================================
 # Base equity-style option (no "safe_*", no public process args)
@@ -289,12 +294,12 @@ class EquityOption(Option):
         *,
         scaled: bool = False,
         include: Iterable[str] = ("price", "delta", "gamma", "vega", "rho", "theta"),
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """
         per-unit  = per 1 underlying
         scaled    = per-unit * quantity * contract_size
         """
-        out: Dict[str, float] = {}
+        out: dict[str, float] = {}
         m = self._position_multiplier() if scaled else 1.0
 
         if "price" in include:
@@ -433,7 +438,7 @@ class BermudanVanillaOption(EquityOption):
     STYLE: ClassVar[str] = "bermudan"
 
     strike: float
-    exercise_dates: Tuple[Date, ...]
+    exercise_dates: tuple[Date, ...]
     engine_params: OptionEngineParameters = field(
         default_factory=lambda: OptionEngineParameters.tree(method="lr", steps=801)
     )
@@ -468,9 +473,9 @@ class BermudanVanillaOption(EquityOption):
         if self.is_expired:
             tag = self.engine_params.tree_tag(default="LR")
             return BinomialVanillaEngine(process, tag, max(3, int(self.engine_params.steps or 801)))
-        elif k == "fd":
+        if k == "fd":
             return FdBlackScholesVanillaEngine(process, int(self.engine_params.nt), int(self.engine_params.nx))
-        elif k == "tree":
+        if k == "tree":
             tag = self.engine_params.tree_tag()
             return BinomialVanillaEngine(process, tag, int(self.engine_params.steps))
 

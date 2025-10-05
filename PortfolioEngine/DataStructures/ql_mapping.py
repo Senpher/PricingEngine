@@ -1,4 +1,6 @@
-from QuantLib import Date as QLDate
+from contextlib import contextmanager
+from enum import Enum
+
 from QuantLib import (
     TARGET,
     Actual360,
@@ -15,8 +17,7 @@ from QuantLib import (
     USDCurrency,
     YieldTermStructureHandle,
 )
-from contextlib import contextmanager
-from enum import Enum
+from QuantLib import Date as QLDate
 
 from PricingEngine.Instruments.Common import (
     AmortizedFixedLeg,
@@ -72,8 +73,7 @@ def fx_direction_alignment(ccy: str, rate: float) -> float:
     inverted_fx_currencies = {"EUR", "NZD", "AUD", "GBP"}
     if ccy in inverted_fx_currencies:
         return 1 / rate
-    else:
-        return rate
+    return rate
 
 
 # Handling evaluation date

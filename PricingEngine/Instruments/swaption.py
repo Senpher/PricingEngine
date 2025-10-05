@@ -1,35 +1,38 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass
+
 from QuantLib import (
-    EuropeanExercise,
-    BermudanExercise,
-    Swaption as QLSwaption,
-    Settlement,
-    BlackSwaptionEngine,
     BachelierSwaptionEngine,
+    BermudanExercise,
+    BlackCalibrationHelper,
+    BlackSwaptionEngine,
     Date,
+    EndCriteria,
+    EuropeanExercise,
     HullWhite,
-    TreeSwaptionEngine,
+    JamshidianSwaptionEngine,
+    LevenbergMarquardt,
+    ModifiedFollowing,
+    Months,
+    Normal,
     Period,
     QuoteHandle,
-    SimpleQuote,
-    SwaptionHelper,
-    LevenbergMarquardt,
-    EndCriteria,
-    ShiftedLognormal,
-    Normal,
-    BlackCalibrationHelper,
-    SwaptionVolatilityStructureHandle,
-    JamshidianSwaptionEngine,
-    SwaptionVolatilityStructure,
-    ModifiedFollowing,
-    SwapIndex,
-    Months,
-    TimeGrid,
     Settings,
+    Settlement,
+    ShiftedLognormal,
+    SimpleQuote,
+    SwapIndex,
+    SwaptionHelper,
+    SwaptionVolatilityStructure,
+    SwaptionVolatilityStructureHandle,
+    TimeGrid,
+    TreeSwaptionEngine,
 )
-from dataclasses import dataclass
-from typing import Optional, Sequence
+from QuantLib import (
+    Swaption as QLSwaption,
+)
 
 from PricingEngine.Instruments import InterestRateSwap
 from PricingEngine.Instruments.Common import Instrument
@@ -56,15 +59,15 @@ class Swaption(Instrument):
 
     irs: InterestRateSwap
     vol_surface: SwaptionVolatilityStructureHandle
-    expiries: Optional[Sequence[Date]] = None
+    expiries: Sequence[Date] | None = None
     settlement: str = "physical"
     vol_model: str = "bachelier"
     is_long: bool = True
     engine: str = "auto"  # "auto" | "surface" | "hw"
 
     # Hull–White (for Bermudans)
-    hw_a: Optional[float] = None
-    hw_sigma: Optional[float] = None
+    hw_a: float | None = None
+    hw_sigma: float | None = None
     hw_time_steps: int = 80
     time_grid: TimeGrid | None = None
 
@@ -177,8 +180,7 @@ class Swaption(Instrument):
         exps = self._expiries()
         if len(exps) == 1:
             return EuropeanExercise(exps[0])
-        else:
-            return BermudanExercise(list(exps))
+        return BermudanExercise(list(exps))
 
     def _settlement_ql(self):
         return Settlement.Physical if self.settlement.lower() == "physical" else Settlement.Cash
@@ -190,10 +192,9 @@ class Swaption(Instrument):
         dh = self.irs.discount_curve  # YieldTermStructureHandle
         if self.vol_model.lower() == "bachelier":
             return BachelierSwaptionEngine(dh, self.vol_surface)
-        elif self.vol_model.lower() == "black":
+        if self.vol_model.lower() == "black":
             return BlackSwaptionEngine(dh, self.vol_surface)
-        else:
-            raise ValueError("vol_type must be 'black' or 'bachelier'")
+        raise ValueError("vol_type must be 'black' or 'bachelier'")
 
     def _engine_bermudan(self):
         # Use provided params if given; otherwise calibrate to the surface
@@ -204,8 +205,7 @@ class Swaption(Instrument):
 
         if self.time_grid is not None:
             return TreeSwaptionEngine(model, self.time_grid, self.irs.discount_curve)
-        else:
-            return TreeSwaptionEngine(model, int(self.hw_time_steps), self.irs.discount_curve)
+        return TreeSwaptionEngine(model, int(self.hw_time_steps), self.irs.discount_curve)
 
     def _use_tree(self) -> bool:
         if self.engine == "hw":

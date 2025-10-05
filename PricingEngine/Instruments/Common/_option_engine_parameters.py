@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -17,24 +16,24 @@ class OptionEngineParameters:
     """
 
     kind: str
-    nt: Optional[int] = None
-    nx: Optional[int] = None
-    steps: Optional[int] = None
-    tree_method: Optional[str] = None
+    nt: int | None = None
+    nx: int | None = None
+    steps: int | None = None
+    tree_method: str | None = None
 
     # ---------- factories ----------
     @classmethod
-    def analytic(cls) -> "OptionEngineParameters":
+    def analytic(cls) -> OptionEngineParameters:
         return cls(kind="analytic")
 
     @classmethod
-    def fd(cls, nt: int = 200, nx: int = 400) -> "OptionEngineParameters":
+    def fd(cls, nt: int = 200, nx: int = 400) -> OptionEngineParameters:
         if nt <= 0 or nx <= 0:
             raise ValueError("FD grid sizes must be positive")
         return cls(kind="fd", nt=nt, nx=nx)
 
     @classmethod
-    def tree(cls, method: str = "lr", steps: int = 501) -> "OptionEngineParameters":
+    def tree(cls, method: str = "lr", steps: int = 501) -> OptionEngineParameters:
         if steps <= 2:
             raise ValueError("tree steps must be > 2")
         method = method.lower()
@@ -43,15 +42,15 @@ class OptionEngineParameters:
         return cls(kind="tree", steps=steps, tree_method=method)
 
     @classmethod
-    def baw(cls) -> "OptionEngineParameters":
+    def baw(cls) -> OptionEngineParameters:
         return cls(kind="baw")
 
     @classmethod
-    def bjerksund(cls) -> "OptionEngineParameters":
+    def bjerksund(cls) -> OptionEngineParameters:
         return cls(kind="bjerksund")
 
     # ---------- helpers ----------
-    def tree_tag(self, default: Optional[str] = None) -> str:
+    def tree_tag(self, default: str | None = None) -> str:
         mapping = {
             "jr": "JR",
             "crr": "CRR",

@@ -1,29 +1,30 @@
+from dataclasses import FrozenInstanceError
+from operator import eq, ne
+
 import pytest
 from QuantLib import (
+    TARGET,
     Actual360,
+    Calendar,
+    Continuous,
     Daily,
     Date,
     DateGeneration,
-    Continuous,
     FlatForward,
     ForwardCurve,
     IborIndex,
     InterestRate,
     ModifiedFollowing,
     Period,
+    Preceding,
+    SavedSettings,
     Schedule,
+    Settings,
     Simple,
-    TARGET,
     YieldTermStructureHandle,
     as_coupon,
     as_floating_rate_coupon,
-    Preceding,
-    SavedSettings,
-    Settings,
-    Calendar,
 )
-from dataclasses import FrozenInstanceError
-from operator import eq, ne
 
 from PricingEngine.Instruments.Common import (
     CURRENCIES,
@@ -36,7 +37,6 @@ from PricingEngine.Instruments.Common import (
     forward_marching_schedule,
     update_dates_in_schedule,
 )
-
 
 # -----------------------
 # Shared fixtures
@@ -555,7 +555,7 @@ class TestFixedCashflowCorrectness:
             rate=rate,
             per_coupon_nominals=per_coupon,
         )
-        for cf1, cf2 in zip(base.cashflows, leg2.cashflows):
+        for cf1, cf2 in zip(base.cashflows, leg2.cashflows, strict=False):
             assert as_coupon(cf1).amount() == as_coupon(cf2).amount()
 
 
@@ -751,7 +751,7 @@ class TestFixedVsFloatingEquivalence:
             forceOverwrite=True,
         )
 
-        for cf1, cf2 in zip(leg_fixed.cashflows, leg_float.cashflows):
+        for cf1, cf2 in zip(leg_fixed.cashflows, leg_float.cashflows, strict=False):
             c1, c2 = as_coupon(cf1), as_floating_rate_coupon(cf2)
             assert c1.accrualStartDate() == c2.accrualStartDate()
             assert c1.accrualEndDate() == c2.accrualEndDate()
@@ -797,7 +797,7 @@ class TestFixedVsFloatingEquivalence:
             forceOverwrite=True,
         )
 
-        for cf1, cf2 in zip(leg_fixed.cashflows, leg_float.cashflows):
+        for cf1, cf2 in zip(leg_fixed.cashflows, leg_float.cashflows, strict=False):
             c1, c2 = as_coupon(cf1), as_floating_rate_coupon(cf2)
             assert c1.accrualStartDate() == c2.accrualStartDate()
             assert c1.accrualEndDate() == c2.accrualEndDate()
@@ -841,7 +841,7 @@ class TestFixedVsFloatingEquivalence:
             forceOverwrite=True,
         )
 
-        for cf1, cf2 in zip(leg_fixed.cashflows, leg_float.cashflows):
+        for cf1, cf2 in zip(leg_fixed.cashflows, leg_float.cashflows, strict=False):
             c1, c2 = as_coupon(cf1), as_floating_rate_coupon(cf2)
             assert c1.accrualStartDate() == c2.accrualStartDate()
             assert c1.accrualEndDate() == c2.accrualEndDate()

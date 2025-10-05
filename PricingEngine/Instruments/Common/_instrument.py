@@ -1,5 +1,5 @@
-import warnings
 from abc import ABC, abstractmethod
+import warnings
 
 
 class Instrument(ABC):

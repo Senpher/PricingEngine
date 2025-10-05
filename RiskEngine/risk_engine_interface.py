@@ -16,7 +16,7 @@ class InitializeRiskEngine:
     not yet implemented.
     """
 
-    def get_portfolio_var(self, *args, **kwargs):  # noqa: D401 - keep signature flexible
+    def get_portfolio_var(self, *args, **kwargs):
         """Placeholder for Value-at-Risk calculation.
 
         The production system would return a Value-at-Risk figure together with

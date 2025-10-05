@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import date
+from typing import Literal
+
 import numpy as np
 from QuantLib import (
     Actual360,
@@ -14,10 +17,8 @@ from QuantLib import (
 from QuantLib import (
     Option as QLOption,
 )
-from datetime import date
-from typing import Literal
 
-from PortfolioEngine.DataStructures import ql_eval_date, MarketDataMapper
+from PortfolioEngine.DataStructures import MarketDataMapper, ql_eval_date
 from PortfolioEngine.Positions import ClientPosition
 
 # PricingEngine Instruments
@@ -168,7 +169,7 @@ class EquityOption(ClientPosition):
         if key == "fd":
             nt = int(ep.get("nt", 121))
             nx = int(ep.get("nx", 241))
-            return OptionEngineParameters.fd(nt=nt, nx=nx), "fd nt:{} nx:{}".format(nt, nx)
+            return OptionEngineParameters.fd(nt=nt, nx=nx), f"fd nt:{nt} nx:{nx}"
         if key == "baw":
             return OptionEngineParameters.baw(), "baw"
         if key == "bjerksund":
@@ -178,9 +179,7 @@ class EquityOption(ClientPosition):
                 raise ValueError("tree engine requires 'steps' and 'method'")
             steps = int(ep["steps"])
             method = str(ep["method"])
-            return OptionEngineParameters.tree(method=method, steps=steps), "tree method:{} steps:{}".format(
-                method, steps
-            )
+            return OptionEngineParameters.tree(method=method, steps=steps), f"tree method:{method} steps:{steps}"
 
         raise ValueError(f"Unknown engine '{key}' in engine_params")
 

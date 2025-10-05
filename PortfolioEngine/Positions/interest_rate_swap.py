@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 import numpy as np
 from QuantLib import (
     TARGET,
@@ -9,14 +11,13 @@ from QuantLib import (
     YieldTermStructureHandle,
     as_floating_rate_coupon,
 )
-from datetime import date
 
 from PortfolioEngine.DataStructures import (
+    GenericIbor,
+    MarketDataMapper,
     QlDayCountMapper,
     QlSwapLegMapper,
-    GenericIbor,
     ql_eval_date,
-    MarketDataMapper,
 )
 from PortfolioEngine.Positions import ClientPosition
 from PricingEngine.Instruments import InterestRateSwap

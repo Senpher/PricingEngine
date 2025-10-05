@@ -26,8 +26,7 @@ def get_instrument_class(class_name):
     instrument_class = InstrumentTypeToClass[class_name].value
     if isinstance(instrument_class, type):
         return instrument_class
-    else:
-        return None
+    return None
 
 
 def get_metric_function(metric_name):

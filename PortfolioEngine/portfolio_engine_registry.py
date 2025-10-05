@@ -15,8 +15,7 @@ def get_engine_class(class_name):
     engine_class = PortfolioMetricToEngineClass[class_name].value
     if isinstance(engine_class, type):
         return engine_class
-    else:
-        return None
+    return None
 
 
 def get_engine_metric_function(metric_name):

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 import numpy as np
 from QuantLib import (
     TARGET,
@@ -10,9 +12,8 @@ from QuantLib import (
     SimpleQuote,
     YieldTermStructureHandle,
 )
-from datetime import date
 
-from PortfolioEngine.DataStructures import fx_base_price_invert, ql_eval_date, MarketDataMapper
+from PortfolioEngine.DataStructures import MarketDataMapper, fx_base_price_invert, ql_eval_date
 from PortfolioEngine.Positions import ClientPosition
 from PricingEngine.Instruments.fx_forward import (
     FxForward,
@@ -118,7 +119,7 @@ class FXForward(ClientPosition):
 
             # assemble list[dict] for FxForward (tenor strings + points)
             tenors = self.priceFXPointsCurveData.ql_tenors  # original tenor strings from MarketDataMapper
-            fx_pts_curve = [{"tenor": str(ten), "points": float(pts)} for ten, pts in zip(tenors, points_price_base)]
+            fx_pts_curve = [{"tenor": str(ten), "points": float(pts)} for ten, pts in zip(tenors, points_price_base, strict=False)]
 
             # Instantiate PricingEngine FxForward (it bootstraps the foreign curve via FxSwapRateHelper)
             ql_maturity = Date(self.maturity.day, self.maturity.month, self.maturity.year)

@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections import deque
+from dataclasses import dataclass, field
+from typing import Any
 
 from QuantLib import (
+    BlackScholesMertonProcess,
     Date,
     Settings,
-    VanillaOption as QLVanillaOption,
-    BlackScholesMertonProcess,
 )
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Deque, Dict, Any
+from QuantLib import (
+    VanillaOption as QLVanillaOption,
+)
 
 from PricingEngine.Instruments.Common import Instrument
 
@@ -143,7 +145,7 @@ class Option(Instrument, ABC):
         return self._position_multiplier() * self.theta()
 
     # Greek log
-    _trace: Deque[Dict[str, Any]] = field(
+    _trace: deque[dict[str, Any]] = field(
         default_factory=lambda: deque(maxlen=256),
         init=False,
         repr=False,

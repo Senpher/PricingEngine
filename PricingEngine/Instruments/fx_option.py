@@ -1,25 +1,24 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from QuantLib import (
+    BlackVolTermStructureHandle,
     Date,
     QuoteHandle,
     YieldTermStructureHandle,
-    BlackVolTermStructureHandle,
 )
-from dataclasses import dataclass
-from typing import Tuple, Optional
 
 from PricingEngine.Instruments import (
-    EuropeanVanillaOption,
     AmericanVanillaOption,
     BermudanVanillaOption,
     EuropeanDigitalOption,
+    EuropeanVanillaOption,
 )
 from PricingEngine.Instruments.Common import OptionEngineParameters
 
-
 # -------------------------
-# FX = Garman–Kohlhagen by mapping:
+# FX = Garman-Kohlhagen by mapping:
 #   foreign_curve  -> dividend_curve (q)
 #   domestic_curve -> risk_free_curve (r)
 # -------------------------
@@ -39,7 +38,7 @@ class FXEuropeanVanillaOption(EuropeanVanillaOption):
         foreign_curve: YieldTermStructureHandle,  # q
         domestic_curve: YieldTermStructureHandle,  # r
         vol: BlackVolTermStructureHandle,
-        engine_params: Optional[OptionEngineParameters] = None,
+        engine_params: OptionEngineParameters | None = None,
         greek_bump_policy: str = "sticky_strike",
     ) -> None:
         super().__init__(
@@ -72,7 +71,7 @@ class FXEuropeanDigitalOption(EuropeanDigitalOption):
         foreign_curve: YieldTermStructureHandle,
         domestic_curve: YieldTermStructureHandle,
         vol: BlackVolTermStructureHandle,
-        engine_params: Optional[OptionEngineParameters] = None,
+        engine_params: OptionEngineParameters | None = None,
         greek_bump_policy: str = "sticky_strike",
     ) -> None:
         super().__init__(
@@ -105,7 +104,7 @@ class FXAmericanVanillaOption(AmericanVanillaOption):
         foreign_curve: YieldTermStructureHandle,
         domestic_curve: YieldTermStructureHandle,
         vol: BlackVolTermStructureHandle,
-        engine_params: Optional[OptionEngineParameters] = None,
+        engine_params: OptionEngineParameters | None = None,
         greek_bump_policy: str = "sticky_strike",
     ) -> None:
         super().__init__(
@@ -133,12 +132,12 @@ class FXBermudanVanillaOption(BermudanVanillaOption):
         contract_size: int,
         option_type: int,
         strike: float,
-        exercise_dates: Tuple[Date, ...],
+        exercise_dates: tuple[Date, ...],
         spot: QuoteHandle,
         foreign_curve: YieldTermStructureHandle,
         domestic_curve: YieldTermStructureHandle,
         vol: BlackVolTermStructureHandle,
-        engine_params: Optional[OptionEngineParameters] = None,
+        engine_params: OptionEngineParameters | None = None,
         greek_bump_policy: str = "sticky_strike",
     ) -> None:
         super().__init__(

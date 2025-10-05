@@ -12,9 +12,10 @@ quantlib = "^1.39"
 pandas = "^2.3.2"
 # Runtime validation/libs
 pydantic = "^2"
-msgspec = "^0.18"
+msgspec = "^0.19.0"
 
 # --- Dev-only tools (IDE + CI) ---
+poetry-core = "^2.2.1"
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.13.0"            # formatter + linter
 mypy = "^1.11"
@@ -33,10 +34,19 @@ build-backend = "poetry.core.masonry.api"
 [tool.ruff]
 target-version = "py313"
 line-length = 120
+src = ["PortfolioEngine", "PricingEngine", "RiskEngine", "tests", "."]
+
 
 [tool.ruff.lint]
-select = ["E","F","W","I","UP","B","C4","SIM","RET","PTH","PL","RUF"]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RET", "PTH", "PL", "RUF"]
 ignore = ["E501"]  # let formatter / judgement handle wrapping
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "PortfolioEngine", "PricingEngine", "RiskEngine",
+    "portfolioengine", "pricingengine", "riskengine"
+]
+force-sort-within-sections = true
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004"]  # magic numbers ok in tests

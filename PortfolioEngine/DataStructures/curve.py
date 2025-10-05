@@ -1,7 +1,7 @@
-import numpy as np
-from QuantLib import Period, Date, DayCounter, ZeroCurve
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+
+import numpy as np
+from QuantLib import Date, DayCounter, Period, ZeroCurve
 
 
 @dataclass
@@ -13,11 +13,11 @@ class CurveData:
     seriesValues: np.ndarray
     ql_tenors: list[Period]
     # derived at init_curve
-    ql_ref_date: Optional[Date] = None
-    ql_day_count: Optional[DayCounter] = None
-    ql_maturities: Optional[List[Date]] = None  # Strictly increasing dates
+    ql_ref_date: Date | None = None
+    ql_day_count: DayCounter | None = None
+    ql_maturities: list[Date] | None = None  # Strictly increasing dates
     # indexing
-    name_to_idx: Dict[str, int] = field(default_factory=dict)
+    name_to_idx: dict[str, int] = field(default_factory=dict)
 
     def init_curve(self, ref_date: Date, day_count: DayCounter) -> None:
         # Init values and maturities
@@ -27,7 +27,7 @@ class CurveData:
         # 1D index map for updating
         self.name_to_idx = {name: i for i, name in enumerate(self.seriesNames)}
 
-    def ql_zero_curve(self, risk_factor_dict: Optional[dict] = None) -> ZeroCurve:
+    def ql_zero_curve(self, risk_factor_dict: dict | None = None) -> ZeroCurve:
         rates = self.seriesValues.copy()
         if risk_factor_dict:
             get = risk_factor_dict.get

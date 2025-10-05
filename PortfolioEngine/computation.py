@@ -1,4 +1,4 @@
-from typing import Any, Tuple
+from typing import Any
 
 from .instrument_registry import (
     get_instrument_class,
@@ -10,7 +10,7 @@ from .portfolio_engine_registry import (
 )
 
 
-def compute_instrument(metric: str, instr_type: str, factors: dict) -> Tuple[Any, dict]:  # previously compute()
+def compute_instrument(metric: str, instr_type: str, factors: dict) -> tuple[Any, dict]:  # previously compute()
     # Convenience method to simplify api.
     if None in (metric, instr_type, factors):
         raise ValueError("Missing input.")
@@ -21,7 +21,7 @@ def compute_instrument(metric: str, instr_type: str, factors: dict) -> Tuple[Any
     return compute()
 
 
-def compute_portfolio(metric: str, instr_type: str, factors: dict) -> Tuple[Any, dict]:
+def compute_portfolio(metric: str, instr_type: str, factors: dict) -> tuple[Any, dict]:
     # Convenience method to simplify api.
     if None in (metric, instr_type, factors):
         raise ValueError("Missing input.")
@@ -34,7 +34,7 @@ def compute_portfolio(metric: str, instr_type: str, factors: dict) -> Tuple[Any,
 
 def compute(
     metric: str, instr_type: str, factors: dict
-) -> Tuple[Any, dict]:  # wrapper of instrument and portfolio compute
+) -> tuple[Any, dict]:  # wrapper of instrument and portfolio compute
     # Convenience method to simplify api.
     if None in (metric, instr_type, factors):
         raise ValueError("Missing input.")
@@ -43,5 +43,4 @@ def compute(
         # May need sub-metric support for finer granularity in the future,
         # such as distinguishing position-level, attribution or stress tests.
         return compute_portfolio(metric, metric, factors)
-    else:
-        return compute_instrument(metric, instr_type, factors)
+    return compute_instrument(metric, instr_type, factors)

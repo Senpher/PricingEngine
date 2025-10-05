@@ -8,11 +8,11 @@ from .interest_rate_swap import IRS
 from .repo import Repo
 
 __all__ = [
+    "IRS",
     "ClientPosition",
     "EquityOption",
-    "OptionStyleKey",
     "FXForward",
     "FXOption",
-    "IRS",
+    "OptionStyleKey",
     "Repo",
 ]

@@ -1,25 +1,25 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
+
+from pandas import DataFrame, option_context
 from QuantLib import (
     Calendar,
     CashFlow,
-    DateGeneration,
     Date,
+    DateGeneration,
     DayCounter,
     FixedRateLeg,
+    IborIndex,
     IborLeg,
     ModifiedFollowing,
     Period,
     Preceding,
     Schedule,
+    Settings,
     as_coupon,
     as_floating_rate_coupon,
-    IborIndex,
-    Settings,
 )
-from dataclasses import dataclass, replace
-from pandas import DataFrame, option_context
-from typing import Tuple
 
 from PricingEngine.Instruments.Common import CURRENCIES
 
@@ -339,7 +339,7 @@ class AmortizedSwapLeg(SwapLeg):
     amortized with `amortization_amount` A in each `amortization_period`.
     """
 
-    per_coupon_nominals: Tuple[float, ...]
+    per_coupon_nominals: tuple[float, ...]
 
     def __post_init__(self):
         # If SwapLeg defines its own __post_init__, let it run first.

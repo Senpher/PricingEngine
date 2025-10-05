@@ -1,7 +1,8 @@
+from datetime import date
+
 from QuantLib import (
     Date,
 )
-from datetime import date
 
 from PortfolioEngine.DataStructures import (
     QlDayCountMapper,

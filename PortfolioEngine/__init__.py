@@ -18,16 +18,16 @@ from .Positions import (
 )
 
 __all__ = [
+    "IRS",
     "ClientPosition",
     "EquityOption",
     "FXForward",
     "FXOption",
-    "IRS",
     "Repo",
+    "computation",
     "compute",
     "compute_instrument",
     "compute_portfolio",
-    "computation",
     "get_engine_class",
     "get_engine_metric_function",
     "get_factors",

@@ -1,24 +1,24 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from functools import cached_property
+
+from pandas import DataFrame, merge
 from QuantLib import (
+    Annual,
+    Continuous,
+    Date,
     DiscountingSwapEngine,
+    QuoteHandle,
+    Settings,
+    SimpleQuote,
     Swap,
     VanillaSwap,
     YieldTermStructureHandle,
-    QuoteHandle,
-    SimpleQuote,
     ZeroSpreadedTermStructure,
-    Continuous,
-    Annual,
-    Date,
-    Settings,
 )
-from dataclasses import dataclass
-from functools import cached_property
-from pandas import DataFrame, merge
-from typing import Type
 
-from PricingEngine.Instruments.Common import Instrument, FixedLeg, FloatingLeg, SwapLeg
+from PricingEngine.Instruments.Common import FixedLeg, FloatingLeg, Instrument, SwapLeg
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -51,24 +51,21 @@ class InterestRateSwap(Instrument):
         # Type checks
         if not issubclass(t1, SwapLeg) or not issubclass(t2, SwapLeg):
             raise ValueError("'paying_leg' and 'receiving_leg' must be a subclass of `SwapLeg`")
-        else:
-            if issubclass(t1, FixedLeg) and issubclass(t2, FixedLeg):
-                raise ValueError("'paying_leg' and 'receiving_leg' cannot be of the same type `FixedLeg`")
-            elif issubclass(t1, FloatingLeg) and issubclass(t2, FloatingLeg):
-                raise ValueError("'paying_leg' and 'receiving_leg' cannot be of the same type `FloatingLeg`")
-            else:
-                pass
+        if issubclass(t1, FixedLeg) and issubclass(t2, FixedLeg):
+            raise ValueError("'paying_leg' and 'receiving_leg' cannot be of the same type `FixedLeg`")
+        if issubclass(t1, FloatingLeg) and issubclass(t2, FloatingLeg):
+            raise ValueError("'paying_leg' and 'receiving_leg' cannot be of the same type `FloatingLeg`")
+        pass
         # Alignment checks
         if self.paying_leg.valuation_date != self.receiving_leg.valuation_date:
             raise ValueError("'paying_leg' and 'receiving_leg' must have the same 'valuation_date'")
-        elif self.paying_leg.issue_date != self.receiving_leg.issue_date:
+        if self.paying_leg.issue_date != self.receiving_leg.issue_date:
             raise ValueError("'paying_leg' and 'receiving_leg' must have the same 'issue_date'")
-        elif self.paying_leg.maturity != self.receiving_leg.maturity:
+        if self.paying_leg.maturity != self.receiving_leg.maturity:
             raise ValueError("'paying_leg' and 'receiving_leg' must have the same 'maturity'")
-        elif self.paying_leg.currency != self.receiving_leg.currency:
+        if self.paying_leg.currency != self.receiving_leg.currency:
             raise ValueError("'paying_leg' and 'receiving_leg' must have the same 'currency'")
-        else:
-            pass
+        pass
 
     # ---------- properties ----------
     @property
@@ -107,7 +104,7 @@ class InterestRateSwap(Instrument):
         return DiscountingSwapEngine(self.discount_curve)
 
     # ---------- internals ----------
-    def _leg(self, cls: Type[SwapLeg]) -> FixedLeg | FloatingLeg:
+    def _leg(self, cls: type[SwapLeg]) -> FixedLeg | FloatingLeg:
         """Return the leg of the requested class; error if missing."""
         if isinstance(self.receiving_leg, cls):
             return self.receiving_leg

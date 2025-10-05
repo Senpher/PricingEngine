@@ -1,6 +1,8 @@
 # tests/Instruments/test_equity_option.py
+from copy import copy
 import dataclasses
 import math
+
 import pytest
 from QuantLib import (
     Actual365Fixed,
@@ -21,10 +23,11 @@ from QuantLib import (
     Simple,
     SimpleQuote,
     UnitedStates,
-    VanillaOption as QLVanillaOption,
     YieldTermStructureHandle,
 )
-from copy import copy
+from QuantLib import (
+    VanillaOption as QLVanillaOption,
+)
 
 from PricingEngine.Instruments import (
     AmericanVanillaOption,
@@ -33,7 +36,6 @@ from PricingEngine.Instruments import (
     EuropeanVanillaOption,
 )
 from PricingEngine.Instruments.Common import OptionEngineParameters
-
 
 # ---------------------------------------------------------------------------
 # Global QL eval date pinning (critical for Bermudan fixtures)
@@ -745,9 +747,7 @@ class TestE_Greeks:
             if greek == "delta":
                 assert 0.0 <= vc <= 1.0
                 assert -1.0 <= vp <= 0.0
-            elif greek == "gamma":
-                assert vc >= 0.0 and vp >= 0.0
-            elif greek == "vega":
+            elif greek == "gamma" or greek == "vega":
                 assert vc >= 0.0 and vp >= 0.0
             elif greek == "rho":
                 assert vc > 0.0 and vp < 0.0
