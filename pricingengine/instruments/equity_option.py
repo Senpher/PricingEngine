@@ -1,547 +1,518 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from functools import cached_property
+from typing import Tuple, Dict, Iterable, ClassVar
 
-from QuantLib import (
-    TARGET,
-    Actual365Fixed,
-    AnalyticEuropeanEngine,
-    BinomialVanillaEngine,
-    BlackConstantVol,
-    BlackScholesMertonProcess,
-    BlackVolTermStructureHandle,
+from QuantLib import (  # Core dates/settings
     Date,
-    EuropeanExercise,
-    FlatForward,
-    Option,
-    PlainVanillaPayoff,
-    QuoteHandle,
+    Period,
     Settings,
+    SavedSettings,  # Market handles & helpers
+    QuoteHandle,
     SimpleQuote,
-    VanillaOption,
     YieldTermStructureHandle,
+    FlatForward,
+    BlackVolTermStructureHandle,
+    BlackConstantVol,
+    BlackScholesMertonProcess,  # Payoffs
+    PlainVanillaPayoff,
+    CashOrNothingPayoff,  # Exercises
+    EuropeanExercise,
+    AmericanExercise,
+    BermudanExercise,  # Engines
+    AnalyticEuropeanEngine,
+    BjerksundStenslandApproximationEngine,
+    BaroneAdesiWhaleyApproximationEngine,
+    FdBlackScholesVanillaEngine,
+    BinomialVanillaEngine,
+    VanillaOption as QLVanillaOption,
+    Option as QLOption,  # day count / comp
+    Actual365Fixed,
+    Simple,
+    Annual,
+    NullCalendar,
 )
 
-try:  # pragma: no cover - optional QuantLib engine
-    from QuantLib import BaroneAdesiWhaleyEngine
-except ImportError:  # pragma: no cover - environment dependent
-    BaroneAdesiWhaleyEngine = None  # type: ignore[assignment]
+from pricingengine.instruments._option import (
+    Option,
+    OptionEngineParameters,
+)
 
-try:  # pragma: no cover - optional QuantLib engine
-    from QuantLib import BjerksundStenslandEngine
-except ImportError:  # pragma: no cover - environment dependent
-    BjerksundStenslandEngine = None  # type: ignore[assignment]
 
-from pricingengine.instruments._instrument import Instrument
-
-try:  # Optional engines depending on QuantLib build
-    from QuantLib import BaroneAdesiWhaleyEngine
-except ImportError:  # pragma: no cover - optional dependency
-    BaroneAdesiWhaleyEngine = None  # type: ignore[assignment]
-
-try:
-    from QuantLib import BinomialVanillaEngine
-except ImportError:  # pragma: no cover - optional dependency
-    BinomialVanillaEngine = None  # type: ignore[assignment]
-
-try:
-    from QuantLib import BjerksundStenslandEngine
-except ImportError:  # pragma: no cover - optional dependency
-    BjerksundStenslandEngine = None  # type: ignore[assignment]
-
-try:
-    from QuantLib import FdBlackScholesVanillaEngine
-except ImportError:  # pragma: no cover - optional dependency
-    FdBlackScholesVanillaEngine = None  # type: ignore[assignment]
-
-_ENGINE_ALIASES: dict[str, str] = {
-    "analytic": "analytic",
-    "black": "analytic",
-    "analytic_european": "analytic",
-    "fd": "finite_difference",
-    "fdm": "finite_difference",
-    "finite_difference": "finite_difference",
-    "finite-difference": "finite_difference",
-    "binomial": "binomial",
-    "tree": "binomial",
-}
-
-if BjerksundStenslandEngine is not None:
-    _ENGINE_ALIASES.update(
-        {
-            "bjerksund_stensland": "bjerksund_stensland",
-            "bjerksund-stensland": "bjerksund_stensland",
-            "bs": "bjerksund_stensland",
-        }
-    )
-
-if BaroneAdesiWhaleyEngine is not None:
-    _ENGINE_ALIASES.update(
-        {
-            "barone_adesi_whaley": "barone_adesi_whaley",
-            "barone-adesi-whaley": "barone_adesi_whaley",
-            "baw": "barone_adesi_whaley",
-        }
-    )
-
-_BINOMIAL_TREE_ALIASES: dict[str, str] = {
-    "jr": "JR",
-    "jarrow-rudd": "JR",
-    "crr": "CRR",
-    "cox-ross-rubinstein": "CRR",
-    "eqp": "EQP",
-    "trigeorgis": "Trigeorgis",
-    "tian": "Tian",
-    "lr": "LR",
-    "joshi4": "Joshi4",
-}
+# ============================================================
+# Base equity-style option (no "safe_*", no public process args)
+# ============================================================
 
 
 @dataclass(frozen=True, kw_only=True)
-class EquityOption(Instrument):
-    """Vanilla European equity option backed by QuantLib handles."""
+class EquityOption(Option):
+    """
+    Abstract base for equity options.
 
-    maturity: Date
-    option_type: str
+    Key conventions:
+      - Per-unit results are per 1 underlying unit (matches QL greeks).
+      - Scaled/total results use: quantity * contract_size.
+      - Public API does NOT accept a 'process' argument; everything uses self._process().
+      - Engine greeks are preferred; FD is used ONLY if the engine call raises.
+    """
+
+    STYLE: ClassVar[str] = "base"
+
+    # core
+    quantity: int
+    option_type: int  # QuantLib.Option.Call / Put
+    contract_size: int = 100
+
+    # Market inputs (uniform across engines)
+    spot: QuoteHandle
+    dividend_curve: YieldTermStructureHandle
+    risk_free_curve: YieldTermStructureHandle
+    vol: BlackVolTermStructureHandle
+
+    # Engine selection (subclasses provide defaults)
+    engine_params: OptionEngineParameters
+
+    # Greeks bump style (placeholder hook)
+    greek_bump_policy: str = "sticky_strike"  # or "sticky_delta" (not implemented)
+
+    # ------------- validation -------------
+    def __post_init__(self) -> None:
+        if self.quantity != int(self.quantity) or int(self.quantity) == 0:
+            raise ValueError("'quantity' must be a non-zero integer")
+
+        if self.option_type not in (QLOption.Call, QLOption.Put):
+            raise ValueError("'option_type' must be Option.Call or Option.Put")
+
+        if int(self.contract_size) <= 0:
+            raise ValueError("'contract_size' must be > 0")
+
+        if any(
+            x is None
+            for x in (self.spot, self.dividend_curve, self.risk_free_curve, self.vol)
+        ):
+            raise ValueError(
+                "Missing market inputs: spot/dividend_curve/risk_free_curve/vol"
+            )
+
+        # engine validation against style
+        self.engine_params.validate_for(self.STYLE)
+
+    def _expiry_date(self) -> Date:  # type: ignore[override]
+        raise NotImplementedError
+
+    @cached_property
+    def _payoff(self):
+        raise NotImplementedError
+
+    @cached_property
+    def _exercise(self):
+        raise NotImplementedError
+
+    def _engine(self, process: BlackScholesMertonProcess):
+        # Subclasses implement mapping to concrete QL engine(s)
+        raise NotImplementedError
+
+    def _process(self) -> BlackScholesMertonProcess:
+        return BlackScholesMertonProcess(
+            self.spot, self.dividend_curve, self.risk_free_curve, self.vol
+        )
+
+    def _ql_option(self) -> QLVanillaOption:
+        ql = QLVanillaOption(self._payoff, self._exercise)
+        ql.setPricingEngine(self._engine(self._process()))
+        return ql
+
+    def _position_multiplier(self) -> float:
+        # OPTION convention: per-position = per-unit * quantity * contract_size
+        return float(self.quantity) * float(self.contract_size)
+
+    def npv_per_unit(self) -> float:
+        if self.is_expired:
+            return 0.0
+        return float(self._ql_option().NPV())
+
+    # ------------- finite-difference bump helper -------------
+    _EPS_S_REL = 1e-4
+    _EPS_SIGMA_REL = 1e-4
+    _EPS_R_ABS = 1e-5
+    _EPS_T_DAYS = 1  # theta per calendar day
+
+    def _atm_level(self) -> float:
+        return float(self.spot.value())
+
+    def _bumped_price(
+        self,
+        *,
+        bump_spot_rel: float | None = None,
+        bump_sigma_rel: float | None = None,
+        bump_r_abs: float | None = None,
+        bump_days: int | None = None,
+    ) -> float:
+        expiry_date = getattr(self, "maturity", None)
+        if expiry_date is None:
+            # Bermudan: last exercise date
+            expiry_date = self.exercise_dates[-1]
+
+        # ---- spot
+        s = self.spot
+        if bump_spot_rel is not None:
+            s0 = float(self.spot.value())
+            s = QuoteHandle(SimpleQuote(s0 * (1.0 + bump_spot_rel)))
+
+        # ---- risk-free (flat curve bumped at the *expiry* tenor)
+        r = self.risk_free_curve
+        if bump_r_abs is not None:
+            vd = self.valuation_date
+            dc = (
+                self.risk_free_curve.dayCounter()
+                if hasattr(self.risk_free_curve, "dayCounter")
+                else Actual365Fixed()
+            )
+            lvl = self.risk_free_curve.zeroRate(expiry_date, dc, Simple, Annual).rate()
+            r = YieldTermStructureHandle(FlatForward(vd, lvl + bump_r_abs, dc))
+
+        # ---- vol (constant vol bumped using *expiry* tenor)
+        v = self.vol
+        if bump_sigma_rel is not None:
+            dc = (
+                self.vol.dayCounter()
+                if hasattr(self.vol, "dayCounter")
+                else Actual365Fixed()
+            )
+            cal = (
+                self.vol.calendar() if hasattr(self.vol, "calendar") else NullCalendar()
+            )
+            vd = self.valuation_date
+
+            # read the vol at the *expiry* time; stick to strike for now
+            sig0 = self.vol.blackVol(expiry_date, self._atm_level())
+            if self.greek_bump_policy == "sticky_strike":
+                bumped = sig0 * (1.0 + bump_sigma_rel)
+            elif self.greek_bump_policy == "sticky_delta":
+                # (same as sticky_strike for now; upgrade later if needed)
+                bumped = sig0 * (1.0 + bump_sigma_rel)
+            else:
+                raise ValueError(f"Unknown greek_bump_policy: {self.greek_bump_policy}")
+
+            v = BlackVolTermStructureHandle(
+                BlackConstantVol(vd, cal, max(1e-8, bumped), dc)
+            )
+
+        proc = BlackScholesMertonProcess(s, self.dividend_curve, r, v)
+
+        # ---- time bump (theta) if requested
+        if bump_days:
+            with SavedSettings():
+                Settings.instance().evaluationDate = self.valuation_date + Period(
+                    f"{int(bump_days)}D"
+                )
+                ql = QLVanillaOption(self._payoff, self._exercise)
+                ql.setPricingEngine(self._engine(proc))
+                return float(ql.NPV())
+        else:
+            ql = QLVanillaOption(self._payoff, self._exercise)
+            ql.setPricingEngine(self._engine(proc))
+            return float(ql.NPV())
+
+    # ------------- engine-or-FD greek wrapper (per unit) -------------
+    def _ql_greek(self, name: str) -> float | None:
+        try:
+            val = float(getattr(self._ql_option(), name)())
+            self._trace_greek(
+                greek=name, source="engine", engine=self.engine_params.kind, value=val
+            )
+            return val
+        except Exception:
+            return None
+
+    def _trace_greek(self, *, greek: str, source: str, engine: str, value: float):
+        # No rebinding; we mutate the deque.
+        self._trace.append(
+            {
+                "greek": greek,
+                "source": source,  # "engine" or "fd"
+                "engine": engine,  # e.g., "BaroneAdesiWhaleyApproximationEngine"
+                "value": float(value),
+            }
+        )
+
+    def delta(self) -> float:
+        g = self._ql_greek("delta")
+        if g is not None:
+            return g
+        eps = self._EPS_S_REL
+        up = self._bumped_price(bump_spot_rel=+eps)
+        dn = self._bumped_price(bump_spot_rel=-eps)
+        s0 = self._atm_level()
+        val = (up - dn) / (2.0 * s0 * eps)
+        self._trace_greek(greek="delta", source="fd", engine="fd", value=val)
+        return val
+
+    def gamma(self) -> float:
+        g = self._ql_greek("gamma")
+        if g is not None:
+            return g
+        eps = self._EPS_S_REL
+        up = self._bumped_price(bump_spot_rel=+eps)
+        mid = self.npv_per_unit()  # use current price as center
+        dn = self._bumped_price(bump_spot_rel=-eps)
+        s0 = self._atm_level()
+        val = (up - 2.0 * mid + dn) / ((s0 * eps) ** 2)
+        self._trace_greek(greek="gamma", source="fd", engine="fd", value=val)
+        return val
+
+    def vega(self) -> float:
+        g = self._ql_greek("vega")
+        if g is not None:
+            return g
+        eps = self._EPS_SIGMA_REL
+        up = self._bumped_price(bump_sigma_rel=+eps)
+        dn = self._bumped_price(bump_sigma_rel=-eps)
+        expiry = self._expiry_date()
+        sigma0 = self.vol.blackVol(expiry, self._atm_level())
+        val = (up - dn) / (2.0 * sigma0 * eps)
+        self._trace_greek(greek="vega", source="fd", engine="fd", value=val)
+        return val
+
+    def rho(self) -> float:
+        g = self._ql_greek("rho")
+        if g is not None:
+            return g
+        eps = self._EPS_R_ABS
+        up = self._bumped_price(bump_r_abs=+eps)
+        dn = self._bumped_price(bump_r_abs=-eps)
+        val = (up - dn) / (2.0 * eps)
+        self._trace_greek(greek="rho", source="fd", engine="fd", value=val)
+        return val
+
+    def theta(self) -> float:
+        """
+        Per-unit theta, *per calendar day* (forward difference).
+
+        Definition:
+          θ ≈ [V(t + Δt) − V(t)] / Δt_days, with Δt = 1 day by default.
+
+        Notes:
+          - Sign: for most vanilla options, theta ≤ 0 (time decay).
+          - Units: result is per calendar day; use `total_theta()` to include quantity×contract_size.
+          - Engines that don’t expose theta will fall back to FD on the same process.
+        """
+        g = self._ql_greek("theta")
+        if g is not None:
+            return g
+        d = self._EPS_T_DAYS
+        fwd = self._bumped_price(bump_days=+d)
+        now = self.npv_per_unit()
+        val = (fwd - now) / d
+        self._trace_greek(greek="theta", source="engine", engine="fd", value=val)
+        return val
+
+    def calc(
+        self,
+        *,
+        scaled: bool = False,
+        include: Iterable[str] = ("price", "delta", "gamma", "vega", "rho", "theta"),
+    ) -> Dict[str, float]:
+        """
+        per-unit  = per 1 underlying
+        scaled    = per-unit * quantity * contract_size
+        """
+        out: Dict[str, float] = {}
+        m = self._position_multiplier() if scaled else 1.0
+
+        if "price" in include:
+            out["price"] = self.npv_per_unit() * m
+
+        for gname in ("delta", "gamma", "vega", "rho", "theta"):
+            if gname in include:
+                per_unit = getattr(self, gname)()
+                out[gname] = per_unit * m
+
+        return out
+
+
+@dataclass(frozen=True, kw_only=True)
+class EuropeanVanillaOption(EquityOption):
+    STYLE: ClassVar[str] = "european"
+
     strike: float
-    spot: QuoteHandle | Any
-    discount_curve: YieldTermStructureHandle | Any
-    volatility: BlackVolTermStructureHandle | Any
-    dividend_curve: YieldTermStructureHandle | Any | None = None
-    calendar: Any | None = None
-    day_counter: Any | None = None
-    engine: str = "analytic"
-    time_steps: int = 200
-    grid_points: int = 200
-    binomial_tree: str = "jr"
+    maturity: Date
+    engine_params: OptionEngineParameters = field(
+        default_factory=OptionEngineParameters.analytic
+    )
 
-    _spot_handle: QuoteHandle = field(init=False, repr=False)
-    _discount_curve_handle: YieldTermStructureHandle = field(init=False, repr=False)
-    _dividend_curve_handle: YieldTermStructureHandle = field(init=False, repr=False)
-    _vol_surface_handle: BlackVolTermStructureHandle = field(init=False, repr=False)
-    _ql_option_type: int = field(init=False, repr=False)
-    _payoff: PlainVanillaPayoff = field(init=False, repr=False)
-    _exercise: EuropeanExercise = field(init=False, repr=False)
-
-    def __post_init__(self):
-        object.__setattr__(self, "calendar", self.calendar or TARGET())
-        object.__setattr__(self, "day_counter", self.day_counter or Actual365Fixed())
-
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not (self.strike > 0.0):
+            raise ValueError("'strike' must be > 0")
         if not isinstance(self.maturity, Date):
-            raise TypeError("maturity must be a QuantLib Date instance")
+            raise TypeError("'maturity' must be a QuantLib Date")
 
-        strike = float(self.strike)
-        if strike <= 0.0:
-            raise ValueError("strike must be strictly positive")
-        object.__setattr__(self, "strike", strike)
+    def _expiry_date(self) -> Date:
+        return self.maturity
 
-        canonical_type = self.option_type.lower()
-        if canonical_type not in {"call", "put"}:
-            raise ValueError("option_type must be 'call' or 'put'")
-        object.__setattr__(self, "option_type", canonical_type)
-        object.__setattr__(self, "_ql_option_type", Option.Call if canonical_type == "call" else Option.Put)
+    @cached_property
+    def _payoff(self) -> PlainVanillaPayoff:
+        return PlainVanillaPayoff(self.option_type, self.strike)
 
-        resolved_engine = self._resolve_engine_name(self.engine)
-        object.__setattr__(self, "engine", resolved_engine)
+    @cached_property
+    def _exercise(self) -> EuropeanExercise:
+        return EuropeanExercise(self.maturity)
 
-        resolved_tree = self._resolve_tree_label(self.binomial_tree)
-        object.__setattr__(self, "binomial_tree", resolved_tree)
+    def _engine(self, process: BlackScholesMertonProcess):
+        k = self.engine_params.kind
+        if self.is_expired or k == "analytic":
+            return AnalyticEuropeanEngine(process)
+        if k == "fd":
+            return FdBlackScholesVanillaEngine(
+                process, int(self.engine_params.nt), int(self.engine_params.nx)
+            )
+        # Explicit guard: unsupported engines for European
+        raise ValueError(f"Engine '{k}' is not supported for European options")
 
-        time_steps = int(self.time_steps)
-        grid_points = int(self.grid_points)
-        if time_steps <= 0:
-            raise ValueError("time_steps must be a positive integer")
-        if grid_points <= 0:
-            raise ValueError("grid_points must be a positive integer")
-        object.__setattr__(self, "time_steps", time_steps)
-        object.__setattr__(self, "grid_points", grid_points)
 
-        spot_handle = self._coerce_quote_handle(self.spot, "spot")
-        discount_handle = self._coerce_yield_curve(self.discount_curve, "discount_curve")
-        dividend_handle = self._coerce_yield_curve(self.dividend_curve, "dividend_curve", allow_none=True, default=0.0)
-        vol_handle = self._coerce_volatility(self.volatility, "volatility")
+@dataclass(frozen=True, kw_only=True)
+class EuropeanDigitalOption(EquityOption):
+    STYLE: ClassVar[str] = "euro_digital"
 
-        object.__setattr__(self, "_spot_handle", spot_handle)
-        object.__setattr__(self, "_discount_curve_handle", discount_handle)
-        object.__setattr__(self, "_dividend_curve_handle", dividend_handle)
-        object.__setattr__(self, "_vol_surface_handle", vol_handle)
+    cash_payoff: float
+    strike: float
+    maturity: Date
+    engine_params: OptionEngineParameters = field(
+        default_factory=OptionEngineParameters.analytic
+    )
 
-        payoff = PlainVanillaPayoff(self._ql_option_type, strike)
-        exercise = EuropeanExercise(self.maturity)
-        object.__setattr__(self, "_payoff", payoff)
-        object.__setattr__(self, "_exercise", exercise)
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not (self.cash_payoff > 0.0):
+            raise ValueError("'cash_payoff' must be > 0")
+        if not (self.strike > 0.0):
+            raise ValueError("'strike' must be > 0")
+        if not isinstance(self.maturity, Date):
+            raise TypeError("'maturity' must be a QuantLib Date")
 
-    # ---------- properties ----------
-    @property
-    def valuation_date(self) -> Date:
-        return Settings.instance().evaluationDate
+    def _expiry_date(self) -> Date:
+        return self.maturity
+
+    @cached_property
+    def _payoff(self) -> CashOrNothingPayoff:
+        return CashOrNothingPayoff(self.option_type, self.strike, self.cash_payoff)
+
+    @cached_property
+    def _exercise(self) -> EuropeanExercise:
+        return EuropeanExercise(self.maturity)
+
+    def _engine(self, process: BlackScholesMertonProcess):
+        k = self.engine_params.kind
+        if self.is_expired or k == "analytic":
+            # AnalyticEuropeanEngine supports digital payoffs
+            return AnalyticEuropeanEngine(process)
+        if k == "fd":
+            return FdBlackScholesVanillaEngine(
+                process, int(self.engine_params.nt), int(self.engine_params.nx)
+            )
+        # Explicit guard
+        raise ValueError(f"Engine '{k}' is not supported for European Digital options")
+
+
+@dataclass(frozen=True, kw_only=True)
+class AmericanVanillaOption(EquityOption):
+    STYLE: ClassVar[str] = "american"
+
+    strike: float
+    maturity: Date
+    engine_params: OptionEngineParameters = field(
+        default_factory=OptionEngineParameters.baw
+    )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not (self.strike > 0.0):
+            raise ValueError("'strike' must be > 0")
+        if not isinstance(self.maturity, Date):
+            raise TypeError("'maturity' must be a QuantLib Date")
+
+    def _expiry_date(self) -> Date:
+        return self.maturity
+
+    @cached_property
+    def _payoff(self) -> PlainVanillaPayoff:
+        return PlainVanillaPayoff(self.option_type, self.strike)
+
+    @cached_property
+    def _exercise(self) -> AmericanExercise:
+        vd = self.valuation_date
+        last = self.maturity
+        earliest = vd if vd <= last else last
+        return AmericanExercise(earliest, last)
+
+    def _engine(self, process: BlackScholesMertonProcess):
+        k = self.engine_params.kind
+        if self.is_expired or k == "baw":
+            return BaroneAdesiWhaleyApproximationEngine(process)
+        if k == "bjerksund":
+            return BjerksundStenslandApproximationEngine(process)
+        if k == "fd":
+            return FdBlackScholesVanillaEngine(
+                process, int(self.engine_params.nt), int(self.engine_params.nx)
+            )
+        if k == "tree":
+            tag = self.engine_params.tree_tag()
+            return BinomialVanillaEngine(process, tag, int(self.engine_params.steps))
+        # Explicit guard
+        raise ValueError(f"Engine '{k}' is not supported for AmericanVanillaOption")
+
+
+@dataclass(frozen=True, kw_only=True)
+class BermudanVanillaOption(EquityOption):
+    STYLE: ClassVar[str] = "bermudan"
+
+    strike: float
+    exercise_dates: Tuple[Date, ...]
+    engine_params: OptionEngineParameters = field(
+        default_factory=lambda: OptionEngineParameters.tree(method="lr", steps=801)
+    )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not (self.strike > 0.0):
+            raise ValueError("'strike' must be > 0")
+        if not self.exercise_dates:
+            raise ValueError("'exercise_dates' must be a non-empty tuple of Date")
+        # sort & dedup (frozen dataclass → set via object.__setattr__)
+        ed = tuple(sorted(set(self.exercise_dates)))
+        object.__setattr__(self, "exercise_dates", ed)
+
+    def _expiry_date(self) -> Date:
+        return self.exercise_dates[-1]
 
     @property
     def is_expired(self) -> bool:
-        return self.valuation_date >= self.maturity
+        return Settings.instance().evaluationDate > self.exercise_dates[-1]
 
-    @property
-    def spot_handle(self) -> QuoteHandle:
-        return self._spot_handle
+    @cached_property
+    def _payoff(self) -> PlainVanillaPayoff:
+        return PlainVanillaPayoff(self.option_type, self.strike)
 
-    @property
-    def discount_curve_handle(self) -> YieldTermStructureHandle:
-        return self._discount_curve_handle
+    @cached_property
+    def _exercise(self) -> BermudanExercise:
+        return BermudanExercise(list(self.exercise_dates))
 
-    @property
-    def dividend_curve_handle(self) -> YieldTermStructureHandle:
-        return self._dividend_curve_handle
-
-    @property
-    def volatility_handle(self) -> BlackVolTermStructureHandle:
-        return self._vol_surface_handle
-
-    # ---------- helpers ----------
-    @staticmethod
-    def _resolve_engine_name(name: str) -> str:
-        try:
-            return _ENGINE_ALIASES[name.lower()]
-        except (AttributeError, KeyError) as exc:  # pragma: no cover - defensive
-            raise ValueError(f"Unsupported engine '{name}'.") from exc
-
-    @staticmethod
-    def _resolve_tree_label(name: str) -> str:
-        try:
-            return _BINOMIAL_TREE_ALIASES[name.lower()]
-        except (AttributeError, KeyError) as exc:  # pragma: no cover - defensive
-            raise ValueError(f"Unsupported binomial tree '{name}'.") from exc
-
-    def _coerce_quote_handle(self, value: QuoteHandle | Any, name: str) -> QuoteHandle:
-        if isinstance(value, QuoteHandle):
-            return value
-        if hasattr(value, "value") and callable(value.value):
-            return QuoteHandle(value)
-        try:
-            numeric = float(value)
-        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
-            raise TypeError(f"{name} must be a QuoteHandle or numeric value") from exc
-        return QuoteHandle(SimpleQuote(numeric))
-
-    def _coerce_yield_curve(
-        self,
-        value: YieldTermStructureHandle | Any | None,
-        name: str,
-        *,
-        allow_none: bool = False,
-        default: float | None = None,
-    ) -> YieldTermStructureHandle:
-        if isinstance(value, YieldTermStructureHandle):
-            return value
-        if value is None:
-            if not allow_none:
-                raise TypeError(f"{name} must be provided")
-            rate = 0.0 if default is None else float(default)
-            curve = FlatForward(self.valuation_date, rate, self.day_counter)
-            return YieldTermStructureHandle(curve)
-        if hasattr(value, "discount") and callable(value.discount):
-            return YieldTermStructureHandle(value)
-        try:
-            rate = float(value)
-        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
-            raise TypeError(f"{name} must be a YieldTermStructureHandle or numeric value") from exc
-        curve = FlatForward(self.valuation_date, rate, self.day_counter)
-        return YieldTermStructureHandle(curve)
-
-    def _coerce_volatility(self, value: BlackVolTermStructureHandle | Any, name: str) -> BlackVolTermStructureHandle:
-        if isinstance(value, BlackVolTermStructureHandle):
-            return value
-        if hasattr(value, "blackVol") and callable(value.blackVol):
-            return BlackVolTermStructureHandle(value)
-        try:
-            vol = float(value)
-        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
-            raise TypeError(f"{name} must be a BlackVolTermStructureHandle or numeric value") from exc
-        if vol < 0.0:
-            raise ValueError("volatility must be non-negative")
-        surface = BlackConstantVol(self.valuation_date, self.calendar, vol, self.day_counter)
-        return BlackVolTermStructureHandle(surface)
-
-    def _process(
-        self,
-        *,
-        spot: QuoteHandle | Any | None = None,
-        volatility: BlackVolTermStructureHandle | Any | None = None,
-        discount_curve: YieldTermStructureHandle | Any | None = None,
-        dividend_curve: YieldTermStructureHandle | Any | None = None,
-    ) -> BlackScholesMertonProcess:
-        s_handle = self._coerce_quote_handle(spot, "spot") if spot is not None else self._spot_handle
-        v_handle = (
-            self._coerce_volatility(volatility, "volatility") if volatility is not None else self._vol_surface_handle
-        )
-        r_handle = (
-            self._coerce_yield_curve(discount_curve, "discount_curve")
-            if discount_curve is not None
-            else self._discount_curve_handle
-        )
-        q_handle = (
-            self._coerce_yield_curve(dividend_curve, "dividend_curve", allow_none=True, default=0.0)
-            if dividend_curve is not None
-            else self._dividend_curve_handle
-        )
-        return BlackScholesMertonProcess(s_handle, q_handle, r_handle, v_handle)
-
-    def _engine(self, process: BlackScholesMertonProcess, engine: str | None = None):
-        resolved = self._resolve_engine_name(engine or self.engine)
-        if resolved == "analytic":
-            return AnalyticEuropeanEngine(process)
-        if resolved == "barone_adesi_whaley":
-            if BaroneAdesiWhaleyEngine is None:
-                msg = "Barone-Adesi-Whaley engine is unavailable in this QuantLib build"
-                raise RuntimeError(msg)
-            return BaroneAdesiWhaleyEngine(process)
-        if resolved == "bjerksund_stensland":
-            if BjerksundStenslandEngine is None:
-                msg = "Bjerksund-Stensland engine is unavailable in this QuantLib build"
-                raise RuntimeError(msg)
-            return BjerksundStenslandEngine(process)
-        if resolved == "finite_difference":
-            if FdBlackScholesVanillaEngine is None:
-                msg = "Finite-difference engine is unavailable in this QuantLib build"
-                raise RuntimeError(msg)
-            return FdBlackScholesVanillaEngine(process, self.time_steps, self.grid_points)
-        if resolved == "binomial":
-            if BinomialVanillaEngine is None:
-                msg = "Binomial engine is unavailable in this QuantLib build"
-                raise RuntimeError(msg)
-            return BinomialVanillaEngine(process, self.binomial_tree, self.time_steps)
-        raise ValueError(f"Unsupported engine '{engine}'.")  # pragma: no cover - defensive
-
-    def _option(
-        self,
-        *,
-        spot: QuoteHandle | Any | None = None,
-        volatility: BlackVolTermStructureHandle | Any | None = None,
-        discount_curve: YieldTermStructureHandle | Any | None = None,
-        dividend_curve: YieldTermStructureHandle | Any | None = None,
-        engine: str | None = None,
-    ) -> VanillaOption:
-        process = self._process(
-            spot=spot,
-            volatility=volatility,
-            discount_curve=discount_curve,
-            dividend_curve=dividend_curve,
-        )
-        option = VanillaOption(self._payoff, self._exercise)
-        option.setPricingEngine(self._engine(process, engine))
-        return option
-
-    # ---------- analytics ----------
-    def mark_to_market(
-        self,
-        *,
-        spot: QuoteHandle | Any | None = None,
-        volatility: BlackVolTermStructureHandle | Any | None = None,
-        discount_curve: YieldTermStructureHandle | Any | None = None,
-        dividend_curve: YieldTermStructureHandle | Any | None = None,
-        engine: str | None = None,
-    ) -> float:
+    def _engine(self, process: BlackScholesMertonProcess):
+        k = self.engine_params.kind
         if self.is_expired:
-            return 0.0
-        npv = self._option(
-            spot=spot,
-            volatility=volatility,
-            discount_curve=discount_curve,
-            dividend_curve=dividend_curve,
-            engine=engine,
-        ).NPV()
-        return float(npv)
+            tag = self.engine_params.tree_tag(default="LR")
+            return BinomialVanillaEngine(
+                process, tag, max(3, int(self.engine_params.steps or 801))
+            )
+        elif k == "fd":
+            return FdBlackScholesVanillaEngine(
+                process, int(self.engine_params.nt), int(self.engine_params.nx)
+            )
+        elif k == "tree":
+            tag = self.engine_params.tree_tag()
+            return BinomialVanillaEngine(process, tag, int(self.engine_params.steps))
 
-    def delta(
-        self,
-        *,
-        spot: QuoteHandle | Any | None = None,
-        volatility: BlackVolTermStructureHandle | Any | None = None,
-        discount_curve: YieldTermStructureHandle | Any | None = None,
-        dividend_curve: YieldTermStructureHandle | Any | None = None,
-        engine: str | None = None,
-    ) -> float:
-        if self.is_expired:
-            return 0.0
-        return float(
-            self._option(
-                spot=spot,
-                volatility=volatility,
-                discount_curve=discount_curve,
-                dividend_curve=dividend_curve,
-                engine=engine,
-            ).delta()
-        )
-
-    def gamma(
-        self,
-        *,
-        spot: QuoteHandle | Any | None = None,
-        volatility: BlackVolTermStructureHandle | Any | None = None,
-        discount_curve: YieldTermStructureHandle | Any | None = None,
-        dividend_curve: YieldTermStructureHandle | Any | None = None,
-        engine: str | None = None,
-    ) -> float:
-        if self.is_expired:
-            return 0.0
-        return float(
-            self._option(
-                spot=spot,
-                volatility=volatility,
-                discount_curve=discount_curve,
-                dividend_curve=dividend_curve,
-                engine=engine,
-            ).gamma()
-        )
-
-    def vega(
-        self,
-        *,
-        spot: QuoteHandle | Any | None = None,
-        volatility: BlackVolTermStructureHandle | Any | None = None,
-        discount_curve: YieldTermStructureHandle | Any | None = None,
-        dividend_curve: YieldTermStructureHandle | Any | None = None,
-        engine: str | None = None,
-    ) -> float:
-        if self.is_expired:
-            return 0.0
-        return float(
-            self._option(
-                spot=spot,
-                volatility=volatility,
-                discount_curve=discount_curve,
-                dividend_curve=dividend_curve,
-                engine=engine,
-            ).vega()
-        )
-
-    def theta(
-        self,
-        *,
-        per_day: bool = False,
-        spot: QuoteHandle | Any | None = None,
-        volatility: BlackVolTermStructureHandle | Any | None = None,
-        discount_curve: YieldTermStructureHandle | Any | None = None,
-        dividend_curve: YieldTermStructureHandle | Any | None = None,
-        engine: str | None = None,
-    ) -> float:
-        if self.is_expired:
-            return 0.0
-        opt = self._option(
-            spot=spot,
-            volatility=volatility,
-            discount_curve=discount_curve,
-            dividend_curve=dividend_curve,
-            engine=engine,
-        )
-        return float(opt.thetaPerDay() if per_day else opt.theta())
-
-    def rho(
-        self,
-        *,
-        spot: QuoteHandle | Any | None = None,
-        volatility: BlackVolTermStructureHandle | Any | None = None,
-        discount_curve: YieldTermStructureHandle | Any | None = None,
-        dividend_curve: YieldTermStructureHandle | Any | None = None,
-        engine: str | None = None,
-    ) -> float:
-        if self.is_expired:
-            return 0.0
-        return float(
-            self._option(
-                spot=spot,
-                volatility=volatility,
-                discount_curve=discount_curve,
-                dividend_curve=dividend_curve,
-                engine=engine,
-            ).rho()
-        )
-
-    def dividend_rho(
-        self,
-        *,
-        spot: QuoteHandle | Any | None = None,
-        volatility: BlackVolTermStructureHandle | Any | None = None,
-        discount_curve: YieldTermStructureHandle | Any | None = None,
-        dividend_curve: YieldTermStructureHandle | Any | None = None,
-        engine: str | None = None,
-    ) -> float:
-        if self.is_expired:
-            return 0.0
-        return float(
-            self._option(
-                spot=spot,
-                volatility=volatility,
-                discount_curve=discount_curve,
-                dividend_curve=dividend_curve,
-                engine=engine,
-            ).dividendRho()
-        )
-
-    def elasticity(
-        self,
-        *,
-        spot: QuoteHandle | Any | None = None,
-        volatility: BlackVolTermStructureHandle | Any | None = None,
-        discount_curve: YieldTermStructureHandle | Any | None = None,
-        dividend_curve: YieldTermStructureHandle | Any | None = None,
-        engine: str | None = None,
-    ) -> float:
-        if self.is_expired:
-            return 0.0
-        return float(
-            self._option(
-                spot=spot,
-                volatility=volatility,
-                discount_curve=discount_curve,
-                dividend_curve=dividend_curve,
-                engine=engine,
-            ).elasticity()
-        )
-
-    def implied_volatility(
-        self,
-        target_price: float,
-        *,
-        spot: QuoteHandle | Any | None = None,
-        discount_curve: YieldTermStructureHandle | Any | None = None,
-        dividend_curve: YieldTermStructureHandle | Any | None = None,
-        accuracy: float = 1e-7,
-        max_evaluations: int = 500,
-        min_vol: float = 1e-6,
-        max_vol: float = 5.0,
-    ) -> float:
-        if self.is_expired:
-            return 0.0
-        process = self._process(
-            spot=spot,
-            discount_curve=discount_curve,
-            dividend_curve=dividend_curve,
-        )
-        option = VanillaOption(self._payoff, self._exercise)
-        vol = option.impliedVolatility(
-            float(target_price),
-            process,
-            float(accuracy),
-            int(max_evaluations),
-            float(min_vol),
-            float(max_vol),
-        )
-        return float(vol)
-
-    # ---------- diagnostics ----------
-    def forward_price(self) -> float:
-        spot = float(self._spot_handle.value())
-        disc = float(self._discount_curve_handle.discount(self.maturity))
-        div = float(self._dividend_curve_handle.discount(self.maturity))
-        return spot * div / disc
-
-    def intrinsic_value(self) -> float:
-        return float(self._payoff(self._spot_handle.value()))
-
-    def time_value(self) -> float:
-        return max(0.0, self.mark_to_market() - self.intrinsic_value())
-
-    def vanilla_option(self, **kwargs) -> VanillaOption:
-        """Expose the configured QuantLib VanillaOption for advanced users."""
-        return self._option(**kwargs)
+        # Explicit guard
+        raise ValueError(f"Engine '{k}' is not supported for BermudanVanillaOption")
