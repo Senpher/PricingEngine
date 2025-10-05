@@ -1,14 +1,14 @@
 from datetime import date
 
-from rvs_engine_interface.client_positions.QL_Mapping import (
-    QL_day_count_mapper,
-)
-from rvs_engine_interface.client_positions.client_positions import ClientPosition
-from rvs_engine_interface.client_positions.QL_Mapping import ql_eval_date
-
 from QuantLib import (
     Date,
 )
+
+from ..data_structures.QL_Mapping import (
+    QL_day_count_mapper,
+    ql_eval_date,
+)
+from .client_positions import ClientPosition
 
 
 class Repo(ClientPosition):
@@ -37,26 +37,18 @@ class Repo(ClientPosition):
         self.ql_day_count = QL_day_count_mapper[day_count].value
 
         self.valueDate = (
-            date.fromisoformat(value_date)
-            if not isinstance(value_date, date)
-            else value_date
+            date.fromisoformat(value_date) if not isinstance(value_date, date) else value_date
         )  # input dates as e.g. "2024-02-13" and convert in instantiation
-        self.ql_value_date = Date(
-            self.valueDate.day, self.valueDate.month, self.valueDate.year
-        )
+        self.ql_value_date = Date(self.valueDate.day, self.valueDate.month, self.valueDate.year)
 
         self.maturity = (
             date.fromisoformat(maturity) if not isinstance(maturity, date) else maturity
         )  # input dates as e.g. "2024-02-13" and convert in instantiation
         self.cash_flows = None  # initialize and fill with used market data / debug info
         self.issue_date = (
-            date.fromisoformat(issue_date)
-            if not isinstance(issue_date, date)
-            else issue_date
+            date.fromisoformat(issue_date) if not isinstance(issue_date, date) else issue_date
         )  # input dates as e.g. "2024-02-13" and convert in instantiation
-        self.ql_issue_date = Date(
-            self.issue_date.day, self.issue_date.month, self.issue_date.year
-        )
+        self.ql_issue_date = Date(self.issue_date.day, self.issue_date.month, self.issue_date.year)
 
     def valuePosition(
         self,
@@ -68,18 +60,10 @@ class Repo(ClientPosition):
 
     def MTM(self) -> tuple[float, dict, str]:  # "MTM" calc for PCS collateralization
         with ql_eval_date(self.ql_value_date):  # Sets the global evaluation date
-            accrual_fraction = self.ql_day_count.yearFraction(
-                self.ql_issue_date, self.ql_value_date
-            )
-            accrued_interest = (
-                self.initial_cash_amount * self.repo_rate * accrual_fraction
-            )
+            accrual_fraction = self.ql_day_count.yearFraction(self.ql_issue_date, self.ql_value_date)
+            accrued_interest = self.initial_cash_amount * self.repo_rate * accrual_fraction
             cash_value = self.initial_cash_amount + accrued_interest
-            collateral_value = (
-                (self.underlying_dirty_price / 100.0)
-                * self.underlying_nominal
-                * (1 - self.hair_cut)
-            )
+            collateral_value = (self.underlying_dirty_price / 100.0) * self.underlying_nominal * (1 - self.hair_cut)
             mtm = cash_value - collateral_value
             used_risk_factors = {
                 "initial_cash_amount": self.initial_cash_amount,

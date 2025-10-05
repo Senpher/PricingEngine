@@ -1,7 +1,9 @@
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Tuple, List
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 import QuantLib as ql
+
 from pricingengine.termstructures.curve import Curve
 
 
@@ -71,7 +73,9 @@ class SurfaceData:
     vol_grid: Optional[List[List[float]]] = None
 
     def init_surface(self, ref_date: ql.Date, ql_dayCounter: ql.DayCounter):
-        # Init values and ql_marturities from the reference date. note that we can't initialize absolute strikes, as we want "sticky moneyness" not "sticky strikes"
+        # Init values and ql_maturities from the reference date.
+        # We deliberately avoid initializing absolute strikes; the volatility
+        # surface works with "sticky moneyness" rather than "sticky strikes".
         self.ql_dayCounter = ql_dayCounter
         self.ql_ref_date = ref_date
         # Build canonical maturity axis (strictly increasing) and moneyness axis (unique + sorted). Pre-compute indexing
@@ -89,9 +93,7 @@ class SurfaceData:
         grid = [[0.0 for _ in range(I_)] for _ in range(J)]
         N = len(self.seriesNames)
         assert (
-            len(self.maturities) == N
-            and len(self.moneyness) == N
-            and len(self.seriesValues) == N
+            len(self.maturities) == N and len(self.moneyness) == N and len(self.seriesValues) == N
         )  # Check consistency
         for k in range(N):
             d = self.ql_maturities[k]
@@ -103,9 +105,7 @@ class SurfaceData:
 
         # Keep track of which name corresponds to which moneyness+maturity for easy updating for risk (need seriesName)
         self.grid_positions.clear()
-        if self.seriesNames is not None and all(
-            n is not None for n in self.seriesNames
-        ):
+        if self.seriesNames is not None and all(n is not None for n in self.seriesNames):
             names = list(self.seriesNames)
             if len(set(names)) == len(names):
                 for k, name in enumerate(names):
@@ -129,9 +129,7 @@ class SurfaceData:
         ]  # Re-calculate the absolute strikes of surface with the (stressed) spot rate
         # Assure increasing strikes by QL convention
         # Moneyness : AHS data is spot/strike=moneynesss so we sort ascending by mn
-        perm = sorted(
-            range(len(strikes)), key=lambda i: strikes[i]
-        )  # ascending by strike
+        perm = sorted(range(len(strikes)), key=lambda i: strikes[i])  # ascending by strike
         strikes_sorted = [strikes[i] for i in perm]
         grid_sorted = [grid[i] for i in perm]  # reorder rows the same way
 
@@ -159,26 +157,18 @@ class MarketDataMapper:
         tenors: list[str] = None,
         seriesValues: np.ndarray = None,
     ) -> None:  # Can add validation error if not same length of arrays/lists
-        if (
-            seriesNames is None
-        ):  # create dummy array of length of either mat or tenor if no names are given.
+        if seriesNames is None:  # create dummy array of length of either mat or tenor if no names are given.
             tenor_len = len(tenors) if tenors is not None else 0
             maturities_len = len(maturities) if maturities is not None else 0
             seriesNames = np.empty(max(tenor_len, maturities_len))
 
         if seriesValues is None:
-            seriesValues = np.empty(
-                len(seriesNames)
-            )  # set to empty array of same length of no values added (default)
+            seriesValues = np.empty(len(seriesNames))  # set to empty array of same length of no values added (default)
         else:
-            seriesValues = np.array(
-                seriesValues
-            )  # Convert to np.array if passed as list
+            seriesValues = np.array(seriesValues)  # Convert to np.array if passed as list
 
         if maturities is None:
-            maturities = np.empty(
-                len(seriesNames)
-            )  # set to empty array of same length of no values added (default)
+            maturities = np.empty(len(seriesNames))  # set to empty array of same length of no values added (default)
         ql_maturities = np.empty(
             len(seriesNames)
         )  # Always set to empty and created with value date and tenors when setting up position
@@ -208,9 +198,7 @@ class MarketDataMapper:
         # Sort arrays by maturities in ascending order before creating CurveData object
         seriesNames = [seriesNames[i] for i in sortedIndices]
         seriesValues = seriesValues[sortedIndices]
-        ql_tenors = [
-            ql_tenors[i] for i in sortedIndices
-        ]  # Keep as list for QuantLib objects
+        ql_tenors = [ql_tenors[i] for i in sortedIndices]  # Keep as list for QuantLib objects
         # maturities = maturities[sortedIndices]
 
         curveData = CurveData(
@@ -243,9 +231,7 @@ class MarketDataMapper:
         if seriesValues is None:
             seriesValues = np.empty(len(seriesNames))
         else:
-            seriesValues = np.array(
-                seriesValues
-            )  # Convert to np.array if passed as list
+            seriesValues = np.array(seriesValues)  # Convert to np.array if passed as list
 
         if maturities is None:
             maturities = np.empty(len(seriesNames))
@@ -258,9 +244,7 @@ class MarketDataMapper:
         ql_tenors = [None] * len(seriesNames)
 
         # Parse tenors if provided
-        if (
-            tenors is not None and tenors[0] is not None
-        ):  # assuming all are None or none are
+        if tenors is not None and tenors[0] is not None:  # assuming all are None or none are
             for i, tenor in enumerate(tenors):
                 # Parse the tenor string
                 if tenor.endswith("D"):
@@ -275,7 +259,8 @@ class MarketDataMapper:
         else:
             ql_tenors = np.empty(len(seriesNames), dtype=object)
 
-        # To do: Put Matrix stuff here (maybe - need value date then as well for converting ql_maturitie. Do we mind it here?)
+        # TODO: Add matrix support once the value date conversion logic is in
+        # place (required for building ql_maturities on demand).
 
         surfaceData = SurfaceData(
             surfaceName=surfaceName,

@@ -1,4 +1,5 @@
-# rvs_engine_interface/client_positions/fx_option.py
+# Portfolio engine FX option implementation built on top of the local
+# equity option wrapper.
 
 from __future__ import annotations
 
@@ -7,12 +8,9 @@ from typing import Literal
 
 from QuantLib import Date
 
-from rvs_engine_interface.client_positions.QL_Mapping import ql_eval_date
-from rvs_engine_interface.client_positions.client_positions import ClientPosition
-# Reuse the RVS EquityOption wrapper
-from rvs_engine_interface.client_positions.equity_option import (
-    EquityOption as RVSEquityOption,
-)
+from ..data_structures.QL_Mapping import ql_eval_date
+from .client_positions import ClientPosition
+from .equity_option import EquityOption as PortfolioEquityOption
 
 StyleKey = Literal["european", "american", "bermudan", "digital"]
 EngineKey = Literal["analytic", "fd", "baw", "bjerksund", "tree"]
@@ -20,7 +18,7 @@ EngineKey = Literal["analytic", "fd", "baw", "bjerksund", "tree"]
 
 class FXOption(ClientPosition):
     """
-    Thin adapter around the RVS EquityOption wrapper, but using *price/base* terminology.
+    Thin adapter around the portfolio engine EquityOption wrapper, but using *price/base* terminology.
 
     Spot mapping:
       fx_spot = price_ccy_rate / base_ccy_rate
@@ -68,14 +66,8 @@ class FXOption(ClientPosition):
         self.posName = pos_name
 
         # normalize valuation date
-        self.valueDate = (
-            value_date
-            if isinstance(value_date, date)
-            else date.fromisoformat(value_date)
-        )
-        self.ql_value_date = Date(
-            self.valueDate.day, self.valueDate.month, self.valueDate.year
-        )
+        self.valueDate = value_date if isinstance(value_date, date) else date.fromisoformat(value_date)
+        self.ql_value_date = Date(self.valueDate.day, self.valueDate.month, self.valueDate.year)
 
         # FX spot components (price/base)
         self.baseCCY = spot["base_ccy"]
@@ -114,8 +106,8 @@ class FXOption(ClientPosition):
 
     # ------------- core valuation -------------
     def valuePosition(self) -> float:
-        """Build an RVS EquityOption with mapped inputs and delegate pricing."""
-        eq = RVSEquityOption(
+        """Build a portfolio EquityOption with mapped inputs and delegate pricing."""
+        eq = PortfolioEquityOption(
             **self._eq_kwargs,
             spot=self.fx_spot,
             discount_curve=self._price_discount_curve,  # r (price currency)

@@ -1,15 +1,24 @@
-from enum import Enum
 from contextlib import contextmanager
-from QuantLib import Settings, Date as QLDate
-from QuantLib import Actual360, ActualActual, Thirty360
+from enum import Enum
+
 from QuantLib import (
-    IborIndex,
     TARGET,
-    YieldTermStructureHandle,
-    Period,
+    Actual360,
+    ActualActual,
+    EURCurrency,
+    GBPCurrency,
+    IborIndex,
     ModifiedFollowing,
+    NOKCurrency,
+    Period,
+    SEKCurrency,
+    Settings,
+    Thirty360,
+    USDCurrency,
+    YieldTermStructureHandle,
 )
-from QuantLib import NOKCurrency, USDCurrency, EURCurrency, GBPCurrency, SEKCurrency
+from QuantLib import Date as QLDate
+
 from pricingengine.cashflows.swap_leg import (
     AmortizedFixedLeg,
     AmortizedFloatingLeg,

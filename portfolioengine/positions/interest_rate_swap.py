@@ -4,29 +4,30 @@ from datetime import date
 
 import numpy as np
 from QuantLib import (
-    Date,
-    Period,
     TARGET,
     Actual360,
+    Date,
+    Period,
     YieldTermStructureHandle,
     as_floating_rate_coupon,
 )
+
 from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg
 from pricingengine.instruments.interest_rate_swap import InterestRateSwap
 
-from rvs_engine_interface.client_positions.QL_Mapping import (
+from ..data_structures.market_data_mapper import MarketDataMapper
+from ..data_structures.QL_Mapping import (
     QL_day_count_mapper,
     QL_swap_leg_mapper,
     generic_ibor,
+    ql_eval_date,
 )
-from rvs_engine_interface.client_positions.QL_Mapping import ql_eval_date
-from rvs_engine_interface.client_positions.client_positions import ClientPosition
-from rvs_engine_interface.client_positions.market_data_mapper import MarketDataMapper
+from .client_positions import ClientPosition
 
 
 class IRS(ClientPosition):
     """
-    RVS wrapper around pricingengine.InterestRateSwap.
+    Portfolio engine wrapper around pricingengine.InterestRateSwap.
 
     - Uses QuantLib global Settings.evaluationDate via ql_eval_date().
     - Builds legs using pricingengine swap-leg classes (via QL_swap_leg_mapper).
@@ -53,30 +54,14 @@ class IRS(ClientPosition):
         self.ccy = ccy
 
         # Parse dates (accepts ISO strings or date objects)
-        self.valueDate = (
-            value_date
-            if isinstance(value_date, date)
-            else date.fromisoformat(value_date)
-        )
-        self.issue_date = (
-            issue_date
-            if isinstance(issue_date, date)
-            else date.fromisoformat(issue_date)
-        )
-        self.maturity = (
-            maturity if isinstance(maturity, date) else date.fromisoformat(maturity)
-        )
+        self.valueDate = value_date if isinstance(value_date, date) else date.fromisoformat(value_date)
+        self.issue_date = issue_date if isinstance(issue_date, date) else date.fromisoformat(issue_date)
+        self.maturity = maturity if isinstance(maturity, date) else date.fromisoformat(maturity)
 
         # QuantLib Date views
-        self.ql_value_date = Date(
-            self.valueDate.day, self.valueDate.month, self.valueDate.year
-        )
-        self.ql_issue_date = Date(
-            self.issue_date.day, self.issue_date.month, self.issue_date.year
-        )
-        self.ql_maturity = Date(
-            self.maturity.day, self.maturity.month, self.maturity.year
-        )
+        self.ql_value_date = Date(self.valueDate.day, self.valueDate.month, self.valueDate.year)
+        self.ql_issue_date = Date(self.issue_date.day, self.issue_date.month, self.issue_date.year)
+        self.ql_maturity = Date(self.maturity.day, self.maturity.month, self.maturity.year)
 
         # Day count to build curves (stays local to this wrapper; legs use their own DC)
         self.ql_curve_day_count = Actual360()
@@ -144,16 +129,12 @@ class IRS(ClientPosition):
         fl_coupons = floating_leg.cashflows
         if not fl_coupons:
             return
-        fixing_dates = tuple(
-            as_floating_rate_coupon(cf).fixingDate() for cf in fl_coupons
-        )
+        fixing_dates = tuple(as_floating_rate_coupon(cf).fixingDate() for cf in fl_coupons)
         past_fixings = [d for d in fixing_dates if d < self.ql_value_date]
         if not past_fixings:
             return
         last_fixing_date = past_fixings[-1]
-        index.addFixing(
-            last_fixing_date, float(self.paying_leg_spec["curr_fixing"]), True
-        )
+        index.addFixing(last_fixing_date, float(self.paying_leg_spec["curr_fixing"]), True)
 
     def _get_used_risk_factors(self) -> dict:
         """
@@ -162,9 +143,7 @@ class IRS(ClientPosition):
         if self.cash_flows is None:
             return {}
         return_dict = self.cash_flows.reset_index().to_dict(orient="list")
-        if self.paying_leg_type == "amortized_floating" and hasattr(
-            self.paying_leg_ql, "nominals"
-        ):
+        if self.paying_leg_type == "amortized_floating" and hasattr(self.paying_leg_ql, "nominals"):
             return_dict["nominals"] = self.paying_leg_ql.nominals
         return return_dict
 
@@ -205,9 +184,7 @@ class IRS(ClientPosition):
         # For floating variants, supply a placeholder index; we’ll rebind in MTM.
         if leg_data["leg_type"] in ("floating", "amortized_floating"):
             placeholder_handle = YieldTermStructureHandle()  # empty link placeholder
-            kwargs["index"] = generic_ibor(
-                leg_data["tenor"], self.ccy, placeholder_handle
-            )
+            kwargs["index"] = generic_ibor(leg_data["tenor"], self.ccy, placeholder_handle)
 
         # Optional fields with light transformations
         for key in (
@@ -246,9 +223,7 @@ class IRS(ClientPosition):
             ql_discount_handle, ql_forecast_handle = self._build_curve_handles()
 
             # 3) Real index on the forecast curve (use paying leg tenor)
-            forecast_index = generic_ibor(
-                self.paying_leg_spec["tenor"], self.ccy, ql_forecast_handle
-            )
+            forecast_index = generic_ibor(self.paying_leg_spec["tenor"], self.ccy, ql_forecast_handle)
 
             # 4) Bind index to the floating leg (mapping guarantees paying is floating in our uses)
             self.paying_leg_ql = self.paying_leg_ql.with_index(forecast_index)

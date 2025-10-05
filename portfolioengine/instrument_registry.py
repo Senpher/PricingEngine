@@ -1,19 +1,11 @@
 from enum import Enum
 
-from rvs_engine_interface.client_positions.Repo import (
-    Repo,
-)
-from rvs_engine_interface.client_positions.equity_option import (
-    EquityOption,
-)
-from rvs_engine_interface.client_positions.fx_forward import (
-    FXForward,
-)
-from rvs_engine_interface.client_positions.fx_option import (
-    FXOption,
-)
-from rvs_engine_interface.client_positions.interest_rate_swap import (
+from .positions import (
     IRS,
+    EquityOption,
+    FXForward,
+    FXOption,
+    Repo,
 )
 
 
