@@ -10,15 +10,15 @@ from .portfolio_engine_registry import (
 )
 
 
-def compute_instrument(metric: str, instr_type: str, factors: dict) -> tuple[Any, dict]:  # previously compute()
+def compute_instrument(metric: str, instr_type: str, factors: dict) -> tuple[Any, dict]:
     # Convenience method to simplify api.
     if None in (metric, instr_type, factors):
         raise ValueError("Missing input.")
     compute_cls = get_instrument_class(instr_type)
     function_name = get_metric_function(metric)
     obj = compute_cls(**factors)
-    compute = getattr(obj, function_name)
-    return compute()
+    cmp = getattr(obj, function_name)
+    return cmp()
 
 
 def compute_portfolio(metric: str, instr_type: str, factors: dict) -> tuple[Any, dict]:
@@ -28,8 +28,8 @@ def compute_portfolio(metric: str, instr_type: str, factors: dict) -> tuple[Any,
     compute_cls = get_engine_class(instr_type)
     function_name = get_engine_metric_function(metric)
     obj = compute_cls(**factors)
-    compute = getattr(obj, function_name)
-    return compute()
+    cmp = getattr(obj, function_name)
+    return cmp()
 
 
 def compute(

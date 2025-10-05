@@ -21,6 +21,6 @@ def get_engine_class(class_name):
 def get_engine_metric_function(metric_name):
     try:
         function_name = EngineMetricFunction[metric_name].value
-    except KeyError:
-        raise ValueError(f"Unknown metric: {metric_name}")
+    except KeyError as err:
+        raise ValueError(f"Unknown metric: {metric_name}") from err
     return function_name

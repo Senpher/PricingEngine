@@ -26,25 +26,24 @@ from PricingEngine.Instruments.Common import FixedLeg, FloatingLeg
 
 class IRS(ClientPosition):
     """
-    Portfolio engine wrapper around PricingEngine.InterestRateSwap.
+    PortfolioEngine wrapper around PricingEngine.InterestRateSwap.
 
     - Uses QuantLib global Settings.evaluationDate via ql_eval_date().
-    - Builds legs using PricingEngine swap-leg classes (via QL_swap_leg_mapper).
-    - Builds discounting handle and a forecasting IborIndex from provided curve dicts.
-    - Binds the real index onto the floating leg (via with_index) before pricing.
-    - Exposes `self.swap` so valuePosition() can simply return self.swap.mark_to_market().
+    - Builds legs via PricingEngine leg classes (through QlSwapLegMapper).
+    - Builds discount and forecast handles from the dicts in `factors`.
+    - For floating legs, builds a local GenericIbor(index, handle) and, if provided,
+      adds a 'curr_fixing' on the last fixing date strictly before the valuation date.
+    - Exposes `self.swap`, `self.cash_flows`, and returns (pv, used_factors, warning) in MTM().
     """
 
     def __init__(
         self,
-        # contract terms
         ccy: str,
         value_date: str | date,
         issue_date: str | date,
         maturity: str | date,
-        receiving_leg: dict,  # typically fixed
-        paying_leg: dict,  # typically floating
-        # market data (flat/bootstrapped curves as dicts of tenors/rates)
+        receiving_leg: dict,
+        paying_leg: dict,
         discount_curve: dict | None = None,
         forecast_curve: dict | None = None,
         pos_name: str | None = None,
@@ -52,41 +51,74 @@ class IRS(ClientPosition):
         self.posName = pos_name
         self.ccy = ccy
 
-        # Parse dates (accepts ISO strings or date objects)
-        self.valueDate = value_date if isinstance(value_date, date) else date.fromisoformat(value_date)
-        self.issue_date = issue_date if isinstance(issue_date, date) else date.fromisoformat(issue_date)
-        self.maturity = maturity if isinstance(maturity, date) else date.fromisoformat(maturity)
+        # Accept ISO strings or datetime.date
+        self.valueDate = value_date if isinstance(value_date, date) else date.fromisoformat(str(value_date))
+        self.issue_date = issue_date if isinstance(issue_date, date) else date.fromisoformat(str(issue_date))
+        self.maturity = maturity if isinstance(maturity, date) else date.fromisoformat(str(maturity))
 
-        # QuantLib Date views
+        # QuantLib dates
         self.ql_value_date = Date(self.valueDate.day, self.valueDate.month, self.valueDate.year)
         self.ql_issue_date = Date(self.issue_date.day, self.issue_date.month, self.issue_date.year)
         self.ql_maturity = Date(self.maturity.day, self.maturity.month, self.maturity.year)
 
-        # Day count to build curves (stays local to this wrapper; legs use their own DC)
+        # Day count for curve bootstrapping (legs use their own DCs)
         self.ql_curve_day_count = Actual360()
 
-        # Keep original leg specs & curve dicts
+        # Keep raw specs
         self.paying_leg_spec = paying_leg
         self.receiving_leg_spec = receiving_leg
         self.discount_curve = discount_curve
         self.forecast_curve = forecast_curve
 
-        # Quick access to types (used for diagnostics)
+        # Quick access to types
         self.paying_leg_type = paying_leg["leg_type"]
         self.receiving_leg_type = receiving_leg["leg_type"]
 
-        # Built artifacts (populated during MTM)
-        self.paying_leg_ql = None
-        self.receiving_leg_ql = None
-        self.swap: InterestRateSwap | None = None
-        self.cash_flows = None  # DataFrame from swap.cashflow_table()
+        # Will be built during valuation
+        self.ql_discount_handle: YieldTermStructureHandle | None = None
+        self.ql_forecast_handle: YieldTermStructureHandle | None = None
 
-    # ---------- helpers ----------
-    def _build_curve_handles(
-        self,
-    ) -> tuple[YieldTermStructureHandle, YieldTermStructureHandle]:
+        self.ql_paying_leg = None
+        self.ql_receiving_leg = None
+        self.swap: InterestRateSwap | None = None
+        self.cash_flows = None  # DataFrame from PricingEngine swap.cashflow_table()
+
+    # ---------- public API ----------
+
+    def MTM(self):
+        pv = self.value_position()
+        return pv, self._get_used_risk_factors(), self._get_warning()
+
+    def value_position(self) -> float:
         """
-        Build QL ZeroCurve handles for discounting & forecasting using MarketDataMapper.
+        Build curves & legs, then price. Also caches the cashflow table for used_factors().
+        """
+        with ql_eval_date(self.ql_value_date):
+            self.ql_discount_handle, self.ql_forecast_handle = self._build_curve_handles()
+
+            # Build legs (only floating legs consume the forecast handle)
+            pay_handle = self.ql_forecast_handle if self.paying_leg_type in ("floating", "amortized_floating") else None
+            rec_handle = (
+                self.ql_forecast_handle if self.receiving_leg_type in ("floating", "amortized_floating") else None
+            )
+
+            self.ql_paying_leg = self._build_leg_object(self.paying_leg_spec, pay_handle)
+            self.ql_receiving_leg = self._build_leg_object(self.receiving_leg_spec, rec_handle)
+
+            # Construct instrument and price
+            self.swap = InterestRateSwap(
+                receiving_leg=self.ql_receiving_leg,
+                paying_leg=self.ql_paying_leg,
+                discount_curve=self.ql_discount_handle,
+            )
+            self.cash_flows = self.swap.cashflow_table()
+            return self.swap.npv()
+
+    # ---------- internals ----------
+
+    def _build_curve_handles(self) -> tuple[YieldTermStructureHandle, YieldTermStructureHandle]:
+        """
+        Build discounting & forecasting handles from dicts (tenors + rates).
         """
         if self.discount_curve is None or self.forecast_curve is None:
             raise ValueError("Both discount_curve and forecast_curve must be provided.")
@@ -97,78 +129,34 @@ class IRS(ClientPosition):
         md.add_curve_data(
             curve_name="DISCOUNT_CURVE",
             tenors=self.discount_curve["tenors"],
-            series_values=np.array(self.discount_curve["rates"]),
+            series_values=np.array(self.discount_curve["rates"], dtype=float),
         )
         disc = md.get_curve_data("DISCOUNT_CURVE")
         disc.init_curve(self.ql_value_date, self.ql_curve_day_count)
-        ql_discount_curve = disc.ql_zero_curve()
-        ql_discount_handle = YieldTermStructureHandle(ql_discount_curve)
+        ql_discount_handle = YieldTermStructureHandle(disc.ql_zero_curve())
 
-        # Forecast curve
+        # Forecast curve (single dict per the tests; used by whichever leg is floating)
         md.add_curve_data(
             curve_name="FORECAST_CURVE",
             tenors=self.forecast_curve["tenors"],
-            series_values=np.array(self.forecast_curve["rates"]),
+            series_values=np.array(self.forecast_curve["rates"], dtype=float),
         )
         fwd = md.get_curve_data("FORECAST_CURVE")
         fwd.init_curve(self.ql_value_date, self.ql_curve_day_count)
-        ql_forecast_curve = fwd.ql_zero_curve()
-        ql_forecast_handle = YieldTermStructureHandle(ql_forecast_curve)
+        ql_forecast_handle = YieldTermStructureHandle(fwd.ql_zero_curve())
 
         return ql_discount_handle, ql_forecast_handle
 
-    def _apply_last_fixing_if_any(self, index, floating_leg) -> None:
+    def _build_leg_object(
+        self, leg_data: dict, forecast_handle: YieldTermStructureHandle | None
+    ) -> FixedLeg | FloatingLeg:
         """
-        If a current fixing is provided in the paying leg spec, add it at the last
-        fixing date strictly before the valuation date.
+        Build a Fixed/Floating (or amortized) leg. For floating, bind a local GenericIbor
+        to the provided forecast handle and, if 'curr_fixing' exists, add that fixing on
+        the last fixing date strictly before valuation date.
         """
-        if "curr_fixing" not in self.paying_leg_spec:
-            return
-        # Derive fixing dates from the floating leg coupons
-        fl_coupons = floating_leg.cashflows
-        if not fl_coupons:
-            return
-        fixing_dates = tuple(as_floating_rate_coupon(cf).fixingDate() for cf in fl_coupons)
-        past_fixings = [d for d in fixing_dates if d < self.ql_value_date]
-        if not past_fixings:
-            return
-        last_fixing_date = past_fixings[-1]
-        index.addFixing(last_fixing_date, float(self.paying_leg_spec["curr_fixing"]), True)
-
-    def _get_used_risk_factors(self) -> dict:
-        """
-        Flatten the cashflow table; include nominals if amortized floating.
-        """
-        if self.cash_flows is None:
-            return {}
-        return_dict = self.cash_flows.reset_index().to_dict(orient="list")
-        if self.paying_leg_type == "amortized_floating" and hasattr(self.paying_leg_ql, "nominals"):
-            return_dict["nominals"] = self.paying_leg_ql.nominals
-        return return_dict
-
-    def _get_warning(self) -> str:
-        """
-        Simple diagnostic when many zero-nominal periods exist on the floating leg.
-        """
-        try:
-            zeros = self.paying_leg_ql.nominals.count(0)
-            if zeros > 1:
-                return f"Number of 0 nominals in cash flows: {zeros}"
-        except Exception:
-            pass
-        return ""
-
-    def _build_leg_object(self, leg_data: dict) -> FixedLeg | FloatingLeg:
-        """
-        Map to PricingEngine swap-leg classes and instantiate.
-
-        Notes:
-        - Do NOT pass valuation_date; legs use Settings.evaluationDate.
-        - Floating/amortized_floating legs must be created with an index.
-          We pass a placeholder index bound to an empty handle; the real
-          forecast index is injected later via with_index().
-        """
-        leg_class = QlSwapLegMapper[leg_data["leg_type"]].value
+        leg_type = leg_data["leg_type"]
+        leg_class = QlSwapLegMapper[leg_type].value  # -> FixedLeg or FloatingLeg (amortized variants map too)
 
         kwargs = {
             "issue_date": self.ql_issue_date,
@@ -176,80 +164,62 @@ class IRS(ClientPosition):
             "nominal": leg_data["nominal"],
             "currency": self.ccy,
             "tenor": Period(leg_data["tenor"]),
-            "calendar": TARGET(),  # hardcoded is fine here
+            "calendar": TARGET(),
             "day_counter": QlDayCountMapper[leg_data["day_count"]].value,
         }
 
-        # For floating variants, supply a placeholder index; we’ll rebind in MTM.
-        if leg_data["leg_type"] in ("floating", "amortized_floating"):
-            placeholder_handle = YieldTermStructureHandle()  # empty link placeholder
-            kwargs["index"] = GenericIbor(leg_data["tenor"], self.ccy, placeholder_handle)
+        # Optional straight-through fields
+        for key in ("rate", "gearing", "spread", "per_coupon_nominals"):
+            if key in leg_data:
+                kwargs[key] = leg_data[key]
 
-        # Optional fields with light transformations
-        for key in (
-            "rate",  # fixed
-            "gearing",
-            "spread",  # ibor
-            "per_coupon_nominals",  # amortization
-        ):
-            if key not in leg_data:
-                continue
-            value = leg_data[key]
-            if key == "amortization_period":
-                value = Period(value)
-            elif key in ("amortization_first_date", "amortization_last_date"):
-                vdate = value if isinstance(value, date) else date.fromisoformat(value)
-                value = Date(vdate.day, vdate.month, vdate.year)
-            kwargs[key] = value
+        if leg_type in ("floating", "amortized_floating"):
+            if forecast_handle is None:
+                raise ValueError("Floating leg requires a forecast handle.")
+            # Local index bound to the correct handle
+            index = GenericIbor(leg_data["tenor"], self.ccy, forecast_handle)
+            kwargs["index"] = index
+            leg = leg_class(**kwargs)
 
-        return leg_class(**kwargs)
+            # Add last past fixing when provided
+            if "curr_fixing" in leg_data:
+                fl_coupons = leg.cashflows
+                if fl_coupons:
+                    fixing_dates = tuple(as_floating_rate_coupon(cf).fixingDate() for cf in fl_coupons)
+                    past = [d for d in fixing_dates if d < self.ql_value_date]
+                    if past:
+                        index.addFixing(past[-1], float(leg_data["curr_fixing"]), True)
+        else:
+            leg = leg_class(**kwargs)
 
-    # ---------- public API ----------
-    def value_position(self) -> float:
+        return leg
+
+    # ---------- used factors / warnings ----------
+
+    def _get_used_risk_factors(self) -> dict:
         """
-        Single entry point:
-          - sets the QL global evaluation date via ql_eval_date
-          - (re)builds legs, curves, index and the swap
-          - captures cashflow table for used risk factors
-          - returns PV (swap NPV)
+        Convert cached cashflow table to lists (to match tests) and attach nominals if present.
         """
-        with ql_eval_date(self.ql_value_date):
-            # 1) Build legs (they read Settings.evaluationDate internally)
-            self.paying_leg_ql = self._build_leg_object(self.paying_leg_spec)
-            self.receiving_leg_ql = self._build_leg_object(self.receiving_leg_spec)
+        if self.cash_flows is None:
+            return {}
+        rd = self.cash_flows.reset_index().to_dict(orient="list")
 
-            # 2) Curves
-            ql_discount_handle, ql_forecast_handle = self._build_curve_handles()
+        # Attach nominals from the first leg that provides them (amortized cases)
+        for leg in (self.ql_paying_leg, self.ql_receiving_leg):
+            if hasattr(leg, "nominals"):
+                rd["nominals"] = list(leg.nominals)
+                break
+        return rd
 
-            # 3) Real index on the forecast curve (use paying leg tenor)
-            forecast_index = GenericIbor(self.paying_leg_spec["tenor"], self.ccy, ql_forecast_handle)
-
-            # 4) Bind index to the floating leg (mapping guarantees paying is floating in our uses)
-            self.paying_leg_ql = self.paying_leg_ql.with_index(forecast_index)
-
-            # 5) Apply current fixing, if provided
-            self._apply_last_fixing_if_any(forecast_index, self.paying_leg_ql)
-
-            # 6) Build swap
-            self.swap = InterestRateSwap(
-                receiving_leg=self.receiving_leg_ql,
-                paying_leg=self.paying_leg_ql,
-                discount_curve=ql_discount_handle,
-            )
-
-            # 7) Cache a cashflow table for used risk factors
-            self.cash_flows = self.swap.cashflow_table()
-
-            # 8) Return PV
-            return self.swap.npv()
-
-    def MTM(self) -> tuple[float, dict, str]:
+    def _get_warning(self) -> str:
         """
-        Thin wrapper around valuePosition():
-          - calls valuePosition() to build & price
-          - returns (PV, used_risk_factors, warning)
+        Simple warning based on number of zero nominals in any amortized leg.
         """
-        pv = self.value_position()
-        used_risk_factors = self._get_used_risk_factors()
-        warning = self._get_warning()
-        return pv, used_risk_factors, warning
+        for leg in (self.ql_paying_leg, self.ql_receiving_leg):
+            try:
+                zeros = leg.nominals.count(0) if hasattr(leg, "nominals") else 0
+                if zeros > 1:
+                    return f"Number of 0 nominals in cash flows: {zeros}"
+            except Exception:
+                pass
+        return ""

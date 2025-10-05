@@ -24,7 +24,7 @@ class Repo(ClientPosition):
         underlying_nominal: float,
         underlying_dirty_price: float,
         hair_cut: float,
-        pos_name: str = None,
+        pos_name: str | None = None,
     ):
         # Initialize and convert to QL types where needed
         self.posName = pos_name

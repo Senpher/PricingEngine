@@ -84,15 +84,9 @@ class FXForward(ClientPosition):
             discount_handle = YieldTermStructureHandle(self.discountCurveData.ql_zero_curve())
 
             # Compute spot S (PRICE/BASE), respecting market inversion flags
-            if fx_base_price_invert(self.baseCCY):
-                base_spot = 1.0 / self.baseCCYRate
-            else:
-                base_spot = self.baseCCYRate
+            base_spot = 1.0 / self.baseCCYRate if fx_base_price_invert(self.baseCCY) else self.baseCCYRate
 
-            if fx_base_price_invert(self.priceCCY):
-                price_spot = 1.0 / self.priceCCYRate
-            else:
-                price_spot = self.priceCCYRate
+            price_spot = 1.0 / self.priceCCYRate if fx_base_price_invert(self.priceCCY) else self.priceCCYRate
 
             s = price_spot / base_spot
             spot_handle = QuoteHandle(SimpleQuote(s))
@@ -119,7 +113,9 @@ class FXForward(ClientPosition):
 
             # assemble list[dict] for FxForward (tenor strings + points)
             tenors = self.priceFXPointsCurveData.ql_tenors  # original tenor strings from MarketDataMapper
-            fx_pts_curve = [{"tenor": str(ten), "points": float(pts)} for ten, pts in zip(tenors, points_price_base, strict=False)]
+            fx_pts_curve = [
+                {"tenor": str(ten), "points": float(pts)} for ten, pts in zip(tenors, points_price_base, strict=False)
+            ]
 
             # Instantiate PricingEngine FxForward (it bootstraps the foreign curve via FxSwapRateHelper)
             ql_maturity = Date(self.maturity.day, self.maturity.month, self.maturity.year)

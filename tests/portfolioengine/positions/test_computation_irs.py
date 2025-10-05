@@ -1,4 +1,15 @@
+import pytest
+import QuantLib as ql
+
 from PortfolioEngine import computation
+
+
+@pytest.fixture(autouse=True)
+def reset_ql_state():
+    ql.Settings.instance().evaluationDate = ql.Date()
+    ql.IndexManager.instance().clearHistories()
+    yield
+    ql.IndexManager.instance().clearHistories()
 
 
 def test_integrate_and_compute_IRS():
@@ -240,6 +251,25 @@ def test_integrate_and_compute_IRS():
             -870663.8597403271,
             -838454.3107722825,
             3478000.9310000613,
+        ],
+        "nominals": [
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
         ],
     }
 
@@ -483,29 +513,29 @@ def test_integrate_and_compute_AIRS():
         "Pay (AmortizedFloatingLeg)": [-44409.166666666664, -13385.195575578156, -0.0],
         "PresentValue": [-43113.55586781061, -12895.445955926643, 0.0],
         "Receive (AmortizedFixedLeg)": [1197.9166666670205, 399.3055555556735, 0.0],
-        "nominals": (
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            7500000,
-            2500000,
-            0,
-            0,
-        ),
+        "nominals": [
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            7500000.0,
+            2500000.0,
+            0.0,
+            0.0,
+        ],
     }
     assert warning == "Number of 0 nominals in cash flows: 2"
 
@@ -743,6 +773,25 @@ def test_integrate_and_compute_IRS_2():  ##Debug this one
             95082361.1111111,
             95082361.1111111,
             95082361.1111111,
+        ],
+        "nominals": [
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
+            100000000,
         ],
     }
 
@@ -1043,7 +1092,7 @@ def test_integrate_and_compute_IRS_3():  ##Debug this one
             32198833.333333336,
             10614999.999999996,
         ],
-        "nominals": (
+        "nominals": [
             60000000,
             60000000,
             60000000,
@@ -1058,7 +1107,7 @@ def test_integrate_and_compute_IRS_3():  ##Debug this one
             60000000,
             60000000,
             60000000,
-        ),
+        ],
     }
 
 
@@ -1255,23 +1304,188 @@ def test_integrate_and_compute_IRS_5():  ##Debug this one
     assert mtm == 248654650.1245926
 
 
-# def test_function_returns_triplet_and_raises_on_tuple(mocker: MockerFixture):
-#     mocker.patch(
-#         "rvs_engine_interface.computation.compute",
-#         return_value=(1.0, {"key": "value"}, "warning"),
-#     )
-#     mtm, used_factors, warning = computation.compute(
-#         "MTM", instr_type="IRS", factors={}
-#     )
-#     assert mtm == 1.0
-#     assert used_factors == {"key": "value"}
-#     assert warning == "warning"
-
-#     mocker.patch(
-#         "rvs_engine_interface.computation.compute",
-#         return_value=(2.0, {"another_key": "another_value"}),
-#     )
-#     with raises(ValueError, match="not enough values to unpack"):
-#         mtm, used_factors, warning = computation.compute(
-#             "MTM", instr_type="IRS", factors={}
-#         )
+def test_integrate_and_compute_IRS_receive_float():
+    # Same dates/curves as test_integrate_and_compute_IRS, but swap legs:
+    factors = {
+        "value_date": "2025-05-16",
+        "issue_date": "2022-11-23",
+        "maturity": "2026-11-23",
+        "ccy": "SEK",
+        "paying_leg": {  # now fixed
+            "leg_type": "fixed",
+            "nominal": 100_000_000,
+            "rate": 0.044,
+            "tenor": "12M",
+            "day_count": "Actual360",
+        },
+        "receiving_leg": {  # now floating
+            "leg_type": "floating",
+            "nominal": 100_000_000,
+            "curr_fixing": 0.0374650,
+            "tenor": "3M",
+            "day_count": "Thirty360",
+            "spread": 0.014425,
+            "gearing": 1,
+        },
+        "discount_curve": {
+            "tenors": [
+                "1W",
+                "2W",
+                "1M",
+                "2M",
+                "3M",
+                "6M",
+                "9M",
+                "1Y",
+                "15M",
+                "18M",
+                "21M",
+                "2Y",
+                "3Y",
+                "4Y",
+                "5Y",
+                "6Y",
+                "7Y",
+                "8Y",
+                "9Y",
+                "10Y",
+                "12Y",
+                "15Y",
+                "20Y",
+                "25Y",
+                "30Y",
+            ],
+            "rates": [
+                0.021663,
+                0.021740,
+                0.021767,
+                0.021428,
+                0.021173,
+                0.020233,
+                0.019464,
+                0.019098,
+                0.019047,
+                0.019010,
+                0.018972,
+                0.018935,
+                0.019428,
+                0.020031,
+                0.020631,
+                0.021366,
+                0.022078,
+                0.022735,
+                0.023318,
+                0.023814,
+                0.024661,
+                0.025341,
+                0.025244,
+                0.024536,
+                0.023824,
+            ],
+        },
+        "forecast_curve": {
+            "tenors": [
+                "1W",
+                "2W",
+                "3W",
+                "1M",
+                "2M",
+                "3M",
+                "4M",
+                "5M",
+                "6M",
+                "7M",
+                "8M",
+                "9M",
+                "10M",
+                "11M",
+                "1Y",
+                "15M",
+                "18M",
+                "21M",
+                "2Y",
+                "3Y",
+                "4Y",
+                "5Y",
+                "6Y",
+                "7Y",
+                "8Y",
+                "9Y",
+                "10Y",
+                "11Y",
+                "12Y",
+                "13Y",
+                "14Y",
+                "15Y",
+                "16Y",
+                "17Y",
+                "18Y",
+                "19Y",
+                "20Y",
+                "21Y",
+                "22Y",
+                "23Y",
+                "24Y",
+                "25Y",
+                "26Y",
+                "27Y",
+                "28Y",
+                "29Y",
+                "30Y",
+            ],
+            "rates": [
+                0.023562,
+                0.023562,
+                0.023562,
+                0.023562,
+                0.023562,
+                0.023562,
+                0.022948,
+                0.022633,
+                0.022464,
+                0.021996,
+                0.021840,
+                0.021758,
+                0.021449,
+                0.021381,
+                0.021351,
+                0.021126,
+                0.021040,
+                0.021063,
+                0.021161,
+                0.021814,
+                0.022511,
+                0.023249,
+                0.023992,
+                0.024651,
+                0.025276,
+                0.025827,
+                0.026333,
+                0.026766,
+                0.027103,
+                0.027363,
+                0.027560,
+                0.027707,
+                0.027791,
+                0.027807,
+                0.027768,
+                0.027682,
+                0.027555,
+                0.027410,
+                0.027261,
+                0.027107,
+                0.026949,
+                0.026787,
+                0.026623,
+                0.026455,
+                0.026285,
+                0.026113,
+                0.025939,
+            ],
+        },
+    }
+    mtm, used_factors, warning = computation.compute("MTM", instr_type="IRS", factors=factors)
+    # Assert the *sign* is flipped relative to the original case
+    # (or assert the exact numbers if your engine reports legs separately in a consistent orientation)
+    # For a quick guard:
+    assert mtm == -3486559.951516051

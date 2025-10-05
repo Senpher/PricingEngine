@@ -84,7 +84,7 @@ class SurfaceData:
         strikes_sorted = [strikes[i] for i in perm]
         grid_sorted = [grid[i] for i in perm]  # reorder rows the same way
 
-        surf = BlackVarianceSurface(
+        return BlackVarianceSurface(
             self.ql_ref_date,
             TARGET(),
             list(self.mat_axis),  # columns
@@ -92,4 +92,3 @@ class SurfaceData:
             grid_sorted,  # J x I list-of-lists (floats)
             self.ql_dayCounter,
         )
-        return surf

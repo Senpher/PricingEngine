@@ -1,6 +1,16 @@
+import pytest
+import QuantLib as ql
 from QuantLib import Date
 
 from PortfolioEngine import computation
+
+
+@pytest.fixture(autouse=True)
+def reset_ql_state():
+    ql.Settings.instance().evaluationDate = ql.Date()
+    ql.IndexManager.instance().clearHistories()
+    yield
+    ql.IndexManager.instance().clearHistories()
 
 
 def test_integrate_and_compute_fx_option():

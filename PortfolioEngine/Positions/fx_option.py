@@ -76,20 +76,20 @@ class FXOption(ClientPosition):
         # cache diagnostics
         self._used: dict = {}
 
-        self._eq_kwargs = dict(
-            value_date=self.valueDate,
-            is_call=is_call,
-            style=style,
-            strike=float(strike),
-            maturity=maturity,
-            exercise_dates=exercise_dates,
-            cash_payoff=cash_payoff,
-            nominal=int(nominal),
-            contract_size=int(contract_size),
-            engine_params=engine_params,
-            pos_name=self.posName,
-            ccy=self.priceCCY,  # position currency = PRICE currency
-        )
+        self._eq_kwargs = {
+            "value_date": self.valueDate,
+            "is_call": is_call,
+            "style": style,
+            "strike": float(strike),
+            "maturity": maturity,
+            "exercise_dates": exercise_dates,
+            "cash_payoff": cash_payoff,
+            "nominal": int(nominal),
+            "contract_size": int(contract_size),
+            "engine_params": engine_params,
+            "pos_name": self.posName,
+            "ccy": self.priceCCY,  # position currency = PRICE currency
+        }
 
     # ------------- core valuation -------------
     def value_position(self) -> float:
