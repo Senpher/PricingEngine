@@ -1,7 +1,7 @@
 import numpy as np
 from QuantLib import Period, Days, Weeks, Months, Years
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, List
 
 from portfolioengine.data_structures import CurveData, SurfaceData
 
@@ -10,6 +10,26 @@ from portfolioengine.data_structures import CurveData, SurfaceData
 class MarketDataMapper:
     curveDataMapping: dict[str, CurveData] = field(default_factory=dict)
     surfaceDataMapping: dict[str, SurfaceData] = field(default_factory=dict)
+
+    @staticmethod
+    def parse_tenors(
+        series_names: list[str] | np.ndarray[tuple[int], np.dtype[np.float64]], tenors: list[str] | None
+    ) -> List[Period]:
+        ql_tenors: List[Optional[Period]] = [None] * len(series_names)
+
+        if tenors and tenors[0] is not None:  # assuming all-or-none
+            for i, tenor in enumerate(tenors):
+                if tenor.endswith("D"):
+                    ql_tenors[i] = Period(int(tenor[:-1]), Days)
+                elif tenor.endswith("W"):
+                    ql_tenors[i] = Period(int(tenor[:-1]), Weeks)
+                elif tenor.endswith("M"):
+                    ql_tenors[i] = Period(int(tenor[:-1]), Months)
+                elif tenor.endswith("Y"):
+                    ql_tenors[i] = Period(int(tenor[:-1]), Years)
+                else:
+                    raise ValueError(f"Unrecognized tenor: {tenor}")
+        return ql_tenors
 
     def add_curve_data(
         self,
@@ -25,33 +45,15 @@ class MarketDataMapper:
             series_names = np.empty(max(tenor_len, maturities_len))
 
         if series_values is None:
-            series_values = np.empty(len(series_names))  # set to empty array of same length of no values added (default)
+            # set to empty array of same length of no values added (default)
+            series_values = np.empty(len(series_names), dtype=object)
         else:
             series_values = np.array(series_values)  # Convert to np.array if passed as list
 
         if maturities is None:
             maturities = np.empty(len(series_names))  # set to empty array of same length of no values added (default)
-        ql_maturities = np.empty(
-            len(series_names)
-        )  # Always set to empty and created with value date and tenors when setting up position
-        ql_tenors = [None] * len(series_names)
-        if tenors[0] is not None:  # assuming all are None or none are
-            for i, tenor in enumerate(tenors):
-                # Parse the tenor string
-                period = Period()
-                if tenor.endswith("D"):
-                    period = Period(int(tenor[:-1]), Days)
-                elif tenor.endswith("W"):
-                    period = Period(int(tenor[:-1]), Weeks)
-                elif tenor.endswith("M"):
-                    period = Period(int(tenor[:-1]), Months)
-                elif tenor.endswith("Y"):
-                    period = Period(int(tenor[:-1]), Years)
-                ql_tenors[i] = period
-        else:
-            ql_tenors = np.empty(
-                len(series_names)
-            )  # Set to empty if not specified (and use numerical maturities instead)
+        # Always set to empty and created with value date and tenors when setting up position
+        ql_tenors = self.parse_tenors(series_names, tenors)
 
         # Sort by ql_tenors
         # Create (index, ql_tenor) pairs, sort by tenor, then extract indices
@@ -62,7 +64,6 @@ class MarketDataMapper:
         series_names = [series_names[i] for i in sorted_indices]
         series_values = series_values[sorted_indices]
         ql_tenors = [ql_tenors[i] for i in sorted_indices]  # Keep as list for QuantLib objects
-        # maturities = maturities[sortedIndices]
 
         curve_data = CurveData(
             curveName=curve_name,
@@ -70,7 +71,6 @@ class MarketDataMapper:
             maturities=maturities,
             seriesValues=series_values,
             ql_tenors=ql_tenors,
-            ql_maturities=ql_maturities,
         )
         self.curveDataMapping[curve_name] = curve_data
 
@@ -102,25 +102,8 @@ class MarketDataMapper:
         if strikes is None:
             strikes = np.empty(len(series_names))
 
-        # Always set to empty and created with value date and tenors when setting up position
-        ql_maturities = np.empty(len(series_names), dtype=object)
-        ql_tenors = [None] * len(series_names)
-
         # Parse tenors if provided
-        if tenors is not None and tenors[0] is not None:  # assuming all are None or none are
-            for i, tenor in enumerate(tenors):
-                # Parse the tenor string
-                if tenor.endswith("D"):
-                    period = Period(int(tenor[:-1]), Days)
-                elif tenor.endswith("W"):
-                    period = Period(int(tenor[:-1]), Weeks)
-                elif tenor.endswith("M"):
-                    period = Period(int(tenor[:-1]), Months)
-                elif tenor.endswith("Y"):
-                    period = Period(int(tenor[:-1]), Years)
-                ql_tenors[i] = period
-        else:
-            ql_tenors = np.empty(len(series_names), dtype=object)
+        ql_tenors = self.parse_tenors(series_names, tenors)
 
         # TODO: Add matrix support once the value date conversion logic is in
         # place (required for building ql_maturities on demand).
@@ -132,7 +115,6 @@ class MarketDataMapper:
             moneyness=strikes,
             seriesValues=series_values,
             ql_tenors=ql_tenors,
-            ql_maturities=ql_maturities,
         )
         self.surfaceDataMapping[surface_name] = surface_data
 

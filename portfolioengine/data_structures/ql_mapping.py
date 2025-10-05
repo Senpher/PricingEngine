@@ -17,7 +17,7 @@ from QuantLib import (
 )
 from contextlib import contextmanager
 from enum import Enum
-from pricingengine.cashflows.swap_leg import (
+from pricingengine.instruments.common import (
     AmortizedFixedLeg,
     AmortizedFloatingLeg,
     FixedLeg,
@@ -25,20 +25,20 @@ from pricingengine.cashflows.swap_leg import (
 )
 
 
-class QL_day_count_mapper(Enum):
+class QlDayCountMapper(Enum):
     Actual360 = Actual360()
     Thirty360 = Thirty360(Thirty360.ISDA)
     ActualActual = ActualActual(ActualActual.ISDA)
 
 
-class QL_swap_leg_mapper(Enum):
+class QlSwapLegMapper(Enum):
     amortized_fixed = AmortizedFixedLeg
     amortized_floating = AmortizedFloatingLeg
     fixed = FixedLeg
     floating = FloatingLeg
 
 
-class QL_ccy_mapper(Enum):
+class QlCcyMapper(Enum):
     USD = USDCurrency()
     EUR = EURCurrency()
     GBP = GBPCurrency()
@@ -46,13 +46,13 @@ class QL_ccy_mapper(Enum):
     NOK = NOKCurrency()
 
 
-class generic_ibor(IborIndex):
+class GenericIbor(IborIndex):
     def __init__(self, tenor: str, currency: str, h: YieldTermStructureHandle):
         super().__init__(
             "GENERIC-IBOR",
             Period(tenor),
             2,
-            QL_ccy_mapper[currency.upper()].value,
+            QlCcyMapper[currency.upper()].value,
             TARGET(),
             ModifiedFollowing,
             False,

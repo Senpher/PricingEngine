@@ -15,9 +15,9 @@ from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg
 from pricingengine.instruments.interest_rate_swap import InterestRateSwap
 from .client_positions import ClientPosition
 from ..data_structures.ql_mapping import (
-    QL_day_count_mapper,
-    QL_swap_leg_mapper,
-    generic_ibor,
+    QlDayCountMapper,
+    QlSwapLegMapper,
+    GenericIbor,
     ql_eval_date,
 )
 from ..data_structures.market_data_mapper import MarketDataMapper
@@ -167,7 +167,7 @@ class IRS(ClientPosition):
           We pass a placeholder index bound to an empty handle; the real
           forecast index is injected later via with_index().
         """
-        leg_class = QL_swap_leg_mapper[leg_data["leg_type"]].value
+        leg_class = QlSwapLegMapper[leg_data["leg_type"]].value
 
         kwargs = {
             "issue_date": self.ql_issue_date,
@@ -176,13 +176,13 @@ class IRS(ClientPosition):
             "currency": self.ccy,
             "tenor": Period(leg_data["tenor"]),
             "calendar": TARGET(),  # hardcoded is fine here
-            "day_counter": QL_day_count_mapper[leg_data["day_count"]].value,
+            "day_counter": QlDayCountMapper[leg_data["day_count"]].value,
         }
 
         # For floating variants, supply a placeholder index; we’ll rebind in MTM.
         if leg_data["leg_type"] in ("floating", "amortized_floating"):
             placeholder_handle = YieldTermStructureHandle()  # empty link placeholder
-            kwargs["index"] = generic_ibor(leg_data["tenor"], self.ccy, placeholder_handle)
+            kwargs["index"] = GenericIbor(leg_data["tenor"], self.ccy, placeholder_handle)
 
         # Optional fields with light transformations
         for key in (
@@ -221,7 +221,7 @@ class IRS(ClientPosition):
             ql_discount_handle, ql_forecast_handle = self._build_curve_handles()
 
             # 3) Real index on the forecast curve (use paying leg tenor)
-            forecast_index = generic_ibor(self.paying_leg_spec["tenor"], self.ccy, ql_forecast_handle)
+            forecast_index = GenericIbor(self.paying_leg_spec["tenor"], self.ccy, ql_forecast_handle)
 
             # 4) Bind index to the floating leg (mapping guarantees paying is floating in our uses)
             self.paying_leg_ql = self.paying_leg_ql.with_index(forecast_index)

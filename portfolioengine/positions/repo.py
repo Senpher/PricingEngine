@@ -5,7 +5,7 @@ from datetime import date
 
 from .client_positions import ClientPosition
 from ..data_structures.ql_mapping import (
-    QL_day_count_mapper,
+    QlDayCountMapper,
     ql_eval_date,
 )
 
@@ -33,7 +33,7 @@ class Repo(ClientPosition):
         self.underlying_nominal = underlying_nominal
         self.underlying_dirty_price = underlying_dirty_price
         self.hair_cut = hair_cut
-        self.ql_day_count = QL_day_count_mapper[day_count].value
+        self.ql_day_count = QlDayCountMapper[day_count].value
 
         self.valueDate = (
             date.fromisoformat(value_date) if not isinstance(value_date, date) else value_date
