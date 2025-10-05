@@ -1,8 +1,6 @@
-from rvs_engine_interface.risk_engine.risk_engine_interface import (
-    InitializeRiskEngine,
-)
-
 from enum import Enum
+
+from .risk_engine.risk_engine_interface import InitializeRiskEngine
 
 
 class EngineMetricFunction(Enum):

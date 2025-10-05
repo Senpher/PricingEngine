@@ -5,28 +5,31 @@ from typing import Literal
 
 import numpy as np
 from QuantLib import (
+    Actual360,
+    Actual365Fixed,
+    BlackVolTermStructureHandle,
+    Continuous,
     Date,
     QuoteHandle,
     SimpleQuote,
-    Actual360,
-    Actual365Fixed,
     YieldTermStructureHandle,
-    BlackVolTermStructureHandle,
-    Option as QLOption,
-    Continuous,
 )
+from QuantLib import (
+    Option as QLOption,
+)
+
 # pricingengine instruments
 from pricingengine.instruments.equity_option import (
-    OptionEngineParameters,
-    EuropeanVanillaOption,
     AmericanVanillaOption,
     BermudanVanillaOption,
     EuropeanDigitalOption,
+    EuropeanVanillaOption,
+    OptionEngineParameters,
 )
 
-from rvs_engine_interface.client_positions.QL_Mapping import ql_eval_date
-from rvs_engine_interface.client_positions.client_positions import ClientPosition
-from rvs_engine_interface.client_positions.market_data_mapper import MarketDataMapper
+from ..data_structures.market_data_mapper import MarketDataMapper
+from ..data_structures.QL_Mapping import ql_eval_date
+from .client_positions import ClientPosition
 
 
 class EquityOption(ClientPosition):
@@ -73,14 +76,8 @@ class EquityOption(ClientPosition):
         pos_name: str | None = None,
     ):
         self.posName = pos_name
-        self.valueDate = (
-            date.fromisoformat(value_date)
-            if not isinstance(value_date, date)
-            else value_date
-        )
-        self.ql_value_date = Date(
-            self.valueDate.day, self.valueDate.month, self.valueDate.year
-        )
+        self.valueDate = date.fromisoformat(value_date) if not isinstance(value_date, date) else value_date
+        self.ql_value_date = Date(self.valueDate.day, self.valueDate.month, self.valueDate.year)
 
         self.spot = spot
         self.optionTypeBool = is_call
@@ -93,19 +90,10 @@ class EquityOption(ClientPosition):
 
         # maturity or exercise dates
         self.maturity = (
-            None
-            if maturity is None
-            else (
-                date.fromisoformat(maturity)
-                if not isinstance(maturity, date)
-                else maturity
-            )
+            None if maturity is None else (date.fromisoformat(maturity) if not isinstance(maturity, date) else maturity)
         )
         if exercise_dates:
-            self.exerciseDates = [
-                (date.fromisoformat(d) if not isinstance(d, date) else d)
-                for d in exercise_dates
-            ]
+            self.exerciseDates = [(date.fromisoformat(d) if not isinstance(d, date) else d) for d in exercise_dates]
         else:
             self.exerciseDates = None
 
@@ -113,9 +101,7 @@ class EquityOption(ClientPosition):
 
         # style sanity
         if self.style not in {"european", "american", "bermudan", "digital"}:
-            raise ValueError(
-                "style must be one of {'european','american','bermudan','digital'}"
-            )
+            raise ValueError("style must be one of {'european','american','bermudan','digital'}")
         if self.style != "bermudan" and self.maturity is None:
             raise ValueError("maturity is required unless style='bermudan'")
         if self.style == "bermudan" and not self.exerciseDates:
@@ -141,9 +127,7 @@ class EquityOption(ClientPosition):
         mdm.addSurfaceData(
             surfaceName="EQ_VOL_SURFACE",
             tenors=vol_surface["tenors"],
-            strikes=np.array(
-                vol_surface["strikes"], dtype=float
-            ),  # moneyness = spot/strike
+            strikes=np.array(vol_surface["strikes"], dtype=float),  # moneyness = spot/strike
             seriesValues=np.array(vol_surface["vols"], dtype=float),
         )
 
@@ -175,9 +159,7 @@ class EquityOption(ClientPosition):
             if self.style == "american":
                 return OptionEngineParameters.baw(), "baw"
             if self.style == "bermudan":
-                return OptionEngineParameters.tree(
-                    steps=201, method="lr"
-                ), "tree method:{} steps:{}".format("lr", 201)
+                return OptionEngineParameters.tree(steps=201, method="lr"), "tree method:{} steps:{}".format("lr", 201)
             raise ValueError(f"Unsupported style '{self.style}'")
 
         key = str(ep.get("engine", "")).lower().strip()
@@ -186,9 +168,7 @@ class EquityOption(ClientPosition):
         if key == "fd":
             nt = int(ep.get("nt", 121))
             nx = int(ep.get("nx", 241))
-            return OptionEngineParameters.fd(nt=nt, nx=nx), "fd nt:{} nx:{}".format(
-                nt, nx
-            )
+            return OptionEngineParameters.fd(nt=nt, nx=nx), "fd nt:{} nx:{}".format(nt, nx)
         if key == "baw":
             return OptionEngineParameters.baw(), "baw"
         if key == "bjerksund":
@@ -198,9 +178,9 @@ class EquityOption(ClientPosition):
                 raise ValueError("tree engine requires 'steps' and 'method'")
             steps = int(ep["steps"])
             method = str(ep["method"])
-            return OptionEngineParameters.tree(
-                method=method, steps=steps
-            ), "tree method:{} steps:{}".format(method, steps)
+            return OptionEngineParameters.tree(method=method, steps=steps), "tree method:{} steps:{}".format(
+                method, steps
+            )
 
         raise ValueError(f"Unknown engine '{key}' in engine_params")
 
@@ -228,9 +208,7 @@ class EquityOption(ClientPosition):
 
             # --- choose instrument class by style ---
             self.ql_maturity = (
-                Date(self.maturity.day, self.maturity.month, self.maturity.year)
-                if self.maturity is not None
-                else None
+                Date(self.maturity.day, self.maturity.month, self.maturity.year) if self.maturity is not None else None
             )
 
             if self.style == "european":
@@ -303,25 +281,17 @@ class EquityOption(ClientPosition):
             probe_date = (
                 opt.maturity
                 if hasattr(opt, "maturity") and opt.maturity
-                else (
-                    opt.exercise_dates[-1]
-                    if hasattr(opt, "exercise_dates")
-                    else self.ql_value_date
-                )
+                else (opt.exercise_dates[-1] if hasattr(opt, "exercise_dates") else self.ql_value_date)
             )
             try:
                 self.used_df = float(disc_curve.discount(probe_date))
-                self.used_rf = float(
-                    disc_curve.zeroRate(probe_date, self.day_count, Continuous).rate()
-                )
+                self.used_rf = float(disc_curve.zeroRate(probe_date, self.day_count, Continuous).rate())
             except Exception:
                 self.used_df = None
                 self.used_rf = None
             try:
                 self.used_dq = float(div_curve.discount(probe_date))
-                self.used_rq = float(
-                    div_curve.zeroRate(probe_date, self.day_count, Continuous).rate()
-                )
+                self.used_rq = float(div_curve.zeroRate(probe_date, self.day_count, Continuous).rate())
             except Exception:
                 self.used_dq = None
                 self.used_rq = None
@@ -332,9 +302,7 @@ class EquityOption(ClientPosition):
                 self.used_vol = None
 
             try:
-                self.maturity_yf = disc_curve.dayCounter().yearFraction(
-                    disc_curve.referenceDate(), self.ql_maturity
-                )
+                self.maturity_yf = disc_curve.dayCounter().yearFraction(disc_curve.referenceDate(), self.ql_maturity)
             except Exception:
                 self.maturity_yf = None
 

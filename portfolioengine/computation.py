@@ -1,18 +1,16 @@
-from typing import Tuple, Any
+from typing import Any, Tuple
 
-from rvs_engine_interface.instrument_registry import (
+from .instrument_registry import (
     get_instrument_class,
     get_metric_function,
 )
-from rvs_engine_interface.portfolio_engine_registry import (
+from .portfolio_engine_registry import (
     get_engine_class,
     get_engine_metric_function,
 )
 
 
-def compute_instrument(
-    metric: str, instr_type: str, factors: dict
-) -> Tuple[Any, dict]:  # previously compute()
+def compute_instrument(metric: str, instr_type: str, factors: dict) -> Tuple[Any, dict]:  # previously compute()
     # Convenience method to simplify api.
     if None in (metric, instr_type, factors):
         raise ValueError("Missing input.")
@@ -41,8 +39,9 @@ def compute(
     if None in (metric, instr_type, factors):
         raise ValueError("Missing input.")
     if instr_type == "Portfolio":
-        return compute_portfolio(
-            metric, metric, factors
-        )  # both taking Metric now from "VaR". May need sub_metric for more granularity here. E.g. instr= Portfolio + metric = VaR + subMetric = position_level/portfolio_level/Attribution/stresstest etc.
+        # Both arguments currently use the metric (e.g. "VaR").
+        # May need sub-metric support for finer granularity in the future,
+        # such as distinguishing position-level, attribution or stress tests.
+        return compute_portfolio(metric, metric, factors)
     else:
         return compute_instrument(metric, instr_type, factors)

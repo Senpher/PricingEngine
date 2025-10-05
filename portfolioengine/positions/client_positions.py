@@ -7,7 +7,9 @@ class ClientPosition(ABC):
         pass  # Here could make use of e.g. QuantLib for valuation
 
     def setUpPosition(self) -> None:
-        pass  # Called after applying risk factors to calibrate position. e.g. (re)calculate z-spread for bonds to match dirtyPrice.
+        # Called after applying risk factors to calibrate position
+        # e.g. (re)calculate z-spread for bonds to match dirty price.
+        pass
 
     def incrementValueDate(self, daysToAdd: int) -> None:
         pass

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
+from functools import cached_property
+from math import exp, log
+from typing import Literal, Sequence
+
 from QuantLib import (
     Date,
     DayCounter,
@@ -11,10 +16,6 @@ from QuantLib import (
     YieldTermStructureHandle,
     ZeroCurve,
 )
-from dataclasses import dataclass, replace
-from functools import cached_property
-from math import exp, log
-from typing import Literal, Sequence
 
 QuoteKind = Literal["zero", "discount", "forward", "flat"]
 CurveRole = Literal["discounting", "forecasting", "other"]
