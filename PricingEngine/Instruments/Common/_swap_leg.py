@@ -21,7 +21,7 @@ from dataclasses import dataclass, replace
 from pandas import DataFrame, option_context
 from typing import Tuple
 
-from pricingengine.instruments.common import CURRENCIES
+from PricingEngine.Instruments.Common import CURRENCIES
 
 
 def forward_marching_schedule(start: Date, end: Date, period: Period, calendar: Calendar) -> Schedule:

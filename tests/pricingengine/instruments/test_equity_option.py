@@ -1,4 +1,4 @@
-# tests/instruments/test_equity_option.py
+# tests/Instruments/test_equity_option.py
 import dataclasses
 import math
 import pytest
@@ -26,13 +26,13 @@ from QuantLib import (
 )
 from copy import copy
 
-from pricingengine.instruments import (
+from PricingEngine.Instruments import (
     AmericanVanillaOption,
     BermudanVanillaOption,
     EuropeanDigitalOption,
     EuropeanVanillaOption,
 )
-from pricingengine.instruments.common import OptionEngineParameters
+from PricingEngine.Instruments.Common import OptionEngineParameters
 
 
 # ---------------------------------------------------------------------------

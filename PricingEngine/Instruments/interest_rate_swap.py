@@ -18,7 +18,7 @@ from functools import cached_property
 from pandas import DataFrame, merge
 from typing import Type
 
-from pricingengine.instruments.common import Instrument, FixedLeg, FloatingLeg, SwapLeg
+from PricingEngine.Instruments.Common import Instrument, FixedLeg, FloatingLeg, SwapLeg
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -26,7 +26,7 @@ class InterestRateSwap(Instrument):
     """
     Class that represents a vanilla interest-rate swap contract.
 
-    Swaps instruments involve two legs, the so-called paying and receiving leg,
+    Swaps Instruments involve two legs, the so-called paying and receiving leg,
     which exchange cash flows based on the contract information. In a vanilla
     interest-rate swap, where the legs are exchanging cash flows in the same
     currency, one leg pays a fixed rate while the other pays a floating rate

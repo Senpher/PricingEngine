@@ -3,7 +3,7 @@ from QuantLib import Period, Days, Weeks, Months, Years
 from dataclasses import dataclass, field
 from typing import Optional, List
 
-from portfolioengine.data_structures import CurveData, SurfaceData
+from PortfolioEngine.DataStructures import CurveData, SurfaceData
 
 
 @dataclass

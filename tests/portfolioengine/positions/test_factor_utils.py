@@ -1,4 +1,4 @@
-from portfolioengine import factor_utils
+from PortfolioEngine import factor_utils
 
 
 def test_get_factors():

@@ -18,7 +18,7 @@ from QuantLib import (
 from contextlib import contextmanager
 from enum import Enum
 
-from pricingengine.instruments.common import (
+from PricingEngine.Instruments.Common import (
     AmortizedFixedLeg,
     AmortizedFloatingLeg,
     FixedLeg,

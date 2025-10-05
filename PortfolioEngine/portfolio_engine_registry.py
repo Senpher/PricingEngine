@@ -1,6 +1,6 @@
 from enum import Enum
 
-from .risk_engine.risk_engine_interface import InitializeRiskEngine
+from RiskEngine.risk_engine_interface import InitializeRiskEngine
 
 
 class EngineMetricFunction(Enum):

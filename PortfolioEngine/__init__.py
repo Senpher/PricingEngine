@@ -8,7 +8,7 @@ from .portfolio_engine_registry import (
     get_engine_class,
     get_engine_metric_function,
 )
-from .positions import (
+from .Positions import (
     IRS,
     ClientPosition,
     EquityOption,

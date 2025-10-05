@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 
 class Instrument(ABC):
-    """Abstract base class for all priced instruments."""
+    """Abstract base class for all priced Instruments."""
 
     @property
     @abstractmethod

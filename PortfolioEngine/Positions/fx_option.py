@@ -3,8 +3,8 @@ from __future__ import annotations
 from QuantLib import Date
 from datetime import date
 
-from portfolioengine.data_structures import ql_eval_date
-from portfolioengine.positions import ClientPosition, EquityOption as PortfolioEquityOption, OptionStyleKey
+from PortfolioEngine.DataStructures import ql_eval_date
+from PortfolioEngine.Positions import ClientPosition, EquityOption as PortfolioEquityOption, OptionStyleKey
 
 
 class FXOption(ClientPosition):

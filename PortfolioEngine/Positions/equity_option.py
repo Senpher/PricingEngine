@@ -17,17 +17,17 @@ from QuantLib import (
 from datetime import date
 from typing import Literal
 
-from portfolioengine.data_structures import ql_eval_date, MarketDataMapper
-from portfolioengine.positions import ClientPosition
+from PortfolioEngine.DataStructures import ql_eval_date, MarketDataMapper
+from PortfolioEngine.Positions import ClientPosition
 
-# pricingengine instruments
-from pricingengine.instruments import (
+# PricingEngine Instruments
+from PricingEngine.Instruments import (
     AmericanVanillaOption,
     BermudanVanillaOption,
     EuropeanDigitalOption,
     EuropeanVanillaOption,
 )
-from pricingengine.instruments.common import OptionEngineParameters
+from PricingEngine.Instruments.Common import OptionEngineParameters
 
 OptionStyleKey = Literal["european", "american", "bermudan", "digital"]
 
@@ -187,7 +187,7 @@ class EquityOption(ClientPosition):
     # ---------------- core valuation ----------------
     def value_position(self) -> float:
         """
-        Build QL objects and price with pricingengine instruments.
+        Build QL objects and price with PricingEngine Instruments.
         """
         with ql_eval_date(self.ql_value_date):
             # --- spot ---

@@ -51,9 +51,9 @@ from QuantLib import (
 )
 from dataclasses import FrozenInstanceError
 
-from pricingengine.instruments import InterestRateSwap
-from pricingengine.instruments import Swaption
-from pricingengine.instruments.common import CURRENCIES, FixedLeg, FloatingLeg
+from PricingEngine.Instruments import InterestRateSwap
+from PricingEngine.Instruments import Swaption
+from PricingEngine.Instruments.Common import CURRENCIES, FixedLeg, FloatingLeg
 
 
 @pytest.fixture
@@ -788,7 +788,7 @@ class TestSwaptionDomain:
         pars = list(hw.params())
         a, s = float(pars[0]), float(pars[1])
 
-        # ONE common grid for all three pricings (union of the exercise dates)
+        # ONE Common grid for all three pricings (union of the exercise dates)
         grid = self.make_union_time_grid(irs, [Tm2, Tm1, T], target_steps=1200)
 
         # 2) “European via tree” (single expiry)
@@ -838,7 +838,7 @@ class TestSwaptionDomain:
         """
         Hold the HW model fixed. With the same (a, sigma) and the same tree.
         Same time grid.
-        A set of expiries earlier than an utmost common latest expiry do not change option price.
+        A set of expiries earlier than an utmost Common latest expiry do not change option price.
         """
         handle = request.getfixturevalue(MODEL_HANDLE[model])
 
@@ -854,7 +854,7 @@ class TestSwaptionDomain:
         hw = seed._calibrate_hw()
         a, s = map(float, list(hw.params())[:2])
 
-        # ONE common grid for all three pricings (union of the exercise dates)
+        # ONE Common grid for all three pricings (union of the exercise dates)
         grid = self.make_union_time_grid(irs, [Tm2, Tm1, T], target_steps=1200)
 
         v_eur = Swaption(

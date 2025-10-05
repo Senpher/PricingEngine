@@ -1,4 +1,4 @@
-from portfolioengine import computation
+from PortfolioEngine import computation
 
 
 def test_compute():

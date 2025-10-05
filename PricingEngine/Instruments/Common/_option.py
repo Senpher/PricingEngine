@@ -12,13 +12,13 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Deque, Dict, Any
 
-from pricingengine.instruments.common import Instrument
+from PricingEngine.Instruments.Common import Instrument
 
 
 @dataclass(frozen=True, kw_only=True)
 class Option(Instrument, ABC):
     """
-    Option base class for QL `VanillaOption`-style instruments.
+    Option base class for QL `VanillaOption`-style Instruments.
 
     Responsibilities handled here (so subclasses stay tiny):
       • Position scaling via `quantity * contract_size`.
@@ -77,7 +77,7 @@ class Option(Instrument, ABC):
         return opt
 
     def _position_multiplier(self) -> int:
-        # uniform scaling across instruments
+        # uniform scaling across Instruments
         return int(self.quantity) * int(self.contract_size)
 
     # ---------- public API ----------

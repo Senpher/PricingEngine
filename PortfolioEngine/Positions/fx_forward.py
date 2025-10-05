@@ -12,9 +12,9 @@ from QuantLib import (
 )
 from datetime import date
 
-from portfolioengine.data_structures import fx_base_price_invert, ql_eval_date, MarketDataMapper
-from portfolioengine.positions import ClientPosition
-from pricingengine.instruments.fx_forward import (
+from PortfolioEngine.DataStructures import fx_base_price_invert, ql_eval_date, MarketDataMapper
+from PortfolioEngine.Positions import ClientPosition
+from PricingEngine.Instruments.fx_forward import (
     FxForward,
 )
 
@@ -96,7 +96,7 @@ class FXForward(ClientPosition):
             s = price_spot / base_spot
             spot_handle = QuoteHandle(SimpleQuote(s))
 
-            # Build PRICE/BASE forward points list[dict] for the pricingengine FxForward
+            # Build PRICE/BASE forward points list[dict] for the PricingEngine FxForward
             # Inputs are to-USD forward points in "rates" (pips). Convert to outrights vs USD, invert if needed,
             # triangulate PRICE/BASE outrights, then points = F - S.
             base_pts = np.array(self.baseFXPointsCurveData.seriesValues, dtype=float)
@@ -120,7 +120,7 @@ class FXForward(ClientPosition):
             tenors = self.priceFXPointsCurveData.ql_tenors  # original tenor strings from MarketDataMapper
             fx_pts_curve = [{"tenor": str(ten), "points": float(pts)} for ten, pts in zip(tenors, points_price_base)]
 
-            # Instantiate pricingengine FxForward (it bootstraps the foreign curve via FxSwapRateHelper)
+            # Instantiate PricingEngine FxForward (it bootstraps the foreign curve via FxSwapRateHelper)
             ql_maturity = Date(self.maturity.day, self.maturity.month, self.maturity.year)
             engine = FxForward(
                 nominal=self.nominal if self.nominal >= 0 else -self.nominal,

@@ -11,24 +11,24 @@ from QuantLib import (
 )
 from datetime import date
 
-from portfolioengine.data_structures import (
+from PortfolioEngine.DataStructures import (
     QlDayCountMapper,
     QlSwapLegMapper,
     GenericIbor,
     ql_eval_date,
     MarketDataMapper,
 )
-from portfolioengine.positions import ClientPosition
-from pricingengine.instruments import InterestRateSwap
-from pricingengine.instruments.common import FixedLeg, FloatingLeg
+from PortfolioEngine.Positions import ClientPosition
+from PricingEngine.Instruments import InterestRateSwap
+from PricingEngine.Instruments.Common import FixedLeg, FloatingLeg
 
 
 class IRS(ClientPosition):
     """
-    Portfolio engine wrapper around pricingengine.InterestRateSwap.
+    Portfolio engine wrapper around PricingEngine.InterestRateSwap.
 
     - Uses QuantLib global Settings.evaluationDate via ql_eval_date().
-    - Builds legs using pricingengine swap-leg classes (via QL_swap_leg_mapper).
+    - Builds legs using PricingEngine swap-leg classes (via QL_swap_leg_mapper).
     - Builds discounting handle and a forecasting IborIndex from provided curve dicts.
     - Binds the real index onto the floating leg (via with_index) before pricing.
     - Exposes `self.swap` so valuePosition() can simply return self.swap.mark_to_market().
@@ -159,7 +159,7 @@ class IRS(ClientPosition):
 
     def _build_leg_object(self, leg_data: dict) -> FixedLeg | FloatingLeg:
         """
-        Map to pricingengine swap-leg classes and instantiate.
+        Map to PricingEngine swap-leg classes and instantiate.
 
         Notes:
         - Do NOT pass valuation_date; legs use Settings.evaluationDate.

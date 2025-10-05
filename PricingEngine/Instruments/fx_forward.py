@@ -22,7 +22,7 @@ from QuantLib import (
 from dataclasses import dataclass, replace
 from typing import List, Dict, Any
 
-from pricingengine.instruments.common import Instrument, CURRENCIES
+from PricingEngine.Instruments.Common import Instrument, CURRENCIES
 
 
 @dataclass(frozen=True, kw_only=True)

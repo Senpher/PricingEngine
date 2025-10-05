@@ -9,13 +9,13 @@ from QuantLib import (
 from dataclasses import dataclass
 from typing import Tuple, Optional
 
-from pricingengine.instruments import (
+from PricingEngine.Instruments import (
     EuropeanVanillaOption,
     AmericanVanillaOption,
     BermudanVanillaOption,
     EuropeanDigitalOption,
 )
-from pricingengine.instruments.common import OptionEngineParameters
+from PricingEngine.Instruments.Common import OptionEngineParameters
 
 
 # -------------------------

@@ -1,23 +1,17 @@
-"""PricingEngine public API."""
+"""Tradable financial Instruments."""
 
-from .instruments import (
-    EuropeanVanillaOption,
-    AmericanVanillaOption,
-    BermudanVanillaOption,
-    EuropeanDigitalOption,
+from .equity_option import EuropeanVanillaOption, AmericanVanillaOption, BermudanVanillaOption, EuropeanDigitalOption
+from .fx_forward import FxForward
+from .fx_option import (
     FXEuropeanVanillaOption,
     FXAmericanVanillaOption,
     FXBermudanVanillaOption,
     FXEuropeanDigitalOption,
-    FxForward,
-    InterestRateSwap,
-    Swaption,
 )
-from .instruments.common import FixedLeg, FloatingLeg, SwapLeg
-from .termstructures import CurveNodes
+from .interest_rate_swap import InterestRateSwap
+from .swaption import Swaption
 
 __all__ = [
-    "CurveNodes",
     "InterestRateSwap",
     "FxForward",
     "EuropeanVanillaOption",

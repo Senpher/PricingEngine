@@ -3,11 +3,11 @@ from QuantLib import (
 )
 from datetime import date
 
-from portfolioengine.data_structures import (
+from PortfolioEngine.DataStructures import (
     QlDayCountMapper,
     ql_eval_date,
 )
-from portfolioengine.positions import ClientPosition
+from PortfolioEngine.Positions import ClientPosition
 
 
 class Repo(ClientPosition):

@@ -24,7 +24,7 @@ pip install -e .[test]
 Run the built-in example to price a vanilla interest rate swap:
 
 ```bash
-python -m pricingengine.examples.price_irs
+python -m PricingEngine.examples.price_irs
 ```
 
 The script builds flat discount and forecast curves, calculates MTM and PV01 and prints the cash-flow schedule.

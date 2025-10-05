@@ -18,7 +18,7 @@ from QuantLib import (
 )
 from dataclasses import FrozenInstanceError
 
-from pricingengine.instruments import FxForward
+from PricingEngine.Instruments import FxForward
 
 
 # ---------------------------

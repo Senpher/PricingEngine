@@ -1,6 +1,6 @@
 from enum import Enum
 
-from .positions import (
+from .Positions import (
     IRS,
     EquityOption,
     FXForward,
