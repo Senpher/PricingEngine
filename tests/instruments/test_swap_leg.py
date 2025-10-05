@@ -3,27 +3,27 @@ from operator import eq, ne
 
 import pytest
 from QuantLib import (
-    TARGET,
     Actual360,
-    Calendar,
-    Continuous,
     Daily,
     Date,
     DateGeneration,
+    Continuous,
     FlatForward,
     ForwardCurve,
     IborIndex,
     InterestRate,
     ModifiedFollowing,
     Period,
-    Preceding,
-    SavedSettings,
     Schedule,
-    Settings,
     Simple,
+    TARGET,
     YieldTermStructureHandle,
     as_coupon,
     as_floating_rate_coupon,
+    Preceding,
+    SavedSettings,
+    Settings,
+    Calendar,
 )
 
 from pricingengine.cashflows.swap_leg import (
@@ -37,6 +37,7 @@ from pricingengine.cashflows.swap_leg import (
     update_dates_in_schedule,
 )
 from pricingengine.currencies import CURRENCIES
+
 
 # -----------------------
 # Shared fixtures
@@ -110,7 +111,9 @@ def index(calendar, day_counter, issue_date, maturity, tenor, currency):
         False,
     )
     horizon = sch.dates()[-1] + tenor
-    yts = YieldTermStructureHandle(ForwardCurve((issue_date, horizon), (flat_rate, flat_rate), day_counter))
+    yts = YieldTermStructureHandle(
+        ForwardCurve((issue_date, horizon), (flat_rate, flat_rate), day_counter)
+    )
     idx = IborIndex(
         "Libor",
         tenor,
@@ -170,7 +173,9 @@ def fixed_leg(calendar, currency, day_counter, issue_date, nominal, maturity, te
 
 
 @pytest.fixture
-def floating_leg(calendar, currency, day_counter, issue_date, nominal, maturity, index, tenor):
+def floating_leg(
+    calendar, currency, day_counter, issue_date, nominal, maturity, index, tenor
+):
     def make(*, valuation_date=None, gearing=1.0, spread=0.0, idx=None):
         if valuation_date is not None:
             Settings.instance().evaluationDate = valuation_date
@@ -191,12 +196,79 @@ def floating_leg(calendar, currency, day_counter, issue_date, nominal, maturity,
 
 
 @pytest.fixture
-def amortized_swap(calendar, currency, day_counter, issue_date, nominal, maturity, tenor):
-    """Factory to instantiate AmortizedSwapLeg with given amortization settings."""
+def amortized_swap():
+    # Constants used across the suite
+    nominal = 100_000_000.0
+    currency = "SEK"
+    issue_date = Date(15, 1, 2024)
+    maturity = Date(15, 1, 2026)
+    tenor = Period("3M")
+    calendar = TARGET()
+    day_counter = Actual360()
 
-    def make(*, valuation_date, amortization_period, amortization_first_date, amortization_last_date):
+    def make(
+        *,
+        valuation_date: Date | None,
+        amortization_period: Period,
+        amortization_first_date: Date,
+        amortization_last_date: Date,
+        amort_amount: float | None = None,  # default 5% * nominal
+    ):
         if valuation_date is not None:
             Settings.instance().evaluationDate = valuation_date
+
+        # Build the LEG schedule exactly like SwapLeg does
+        leg_schedule = Schedule(
+            issue_date,
+            maturity,
+            tenor,
+            calendar,
+            ModifiedFollowing,
+            Preceding,
+            DateGeneration.Forward,
+            False,
+        )
+        coupon_dates = list(leg_schedule.dates())  # FULL schedule (what SwapLeg uses)
+
+        # Build amortization dates as a schedule too, so we get consistent BDC/EOM rolling.
+        # If period or window is nonsensical, fall back to "no amortizations".
+        try:
+            amort_schedule = Schedule(
+                amortization_first_date,
+                amortization_last_date,
+                amortization_period,
+                calendar,
+                ModifiedFollowing,  # roll like a payment date
+                ModifiedFollowing,
+                DateGeneration.Forward,
+                False,
+            )
+            amort_dates = tuple(amort_schedule.dates())
+        except Exception:
+            amort_dates = tuple()
+
+        step = float(nominal * 0.05) if amort_amount is None else float(amort_amount)
+
+        # --- Core rule ---
+        # For each coupon date C_i, apply every amort date A with (C_{i-1}, C_i]
+        # i.e. strictly after previous coupon date and up to & including current date.
+        per_coupon = []
+        current = float(nominal)
+        prev = None
+        for ci in coupon_dates:
+            if prev is None:
+                # first coupon: include amortizations on/before ci but AFTER "no previous"
+                # operationally: all A <= ci
+                for a in amort_dates:
+                    if a <= ci:
+                        current = max(0.0, current - step)
+            else:
+                for a in amort_dates:
+                    if prev < a <= ci:
+                        current = max(0.0, current - step)
+            per_coupon.append(current)
+            prev = ci
+
         return AmortizedSwapLeg(
             nominal=nominal,
             currency=currency,
@@ -205,10 +277,7 @@ def amortized_swap(calendar, currency, day_counter, issue_date, nominal, maturit
             tenor=tenor,
             calendar=calendar,
             day_counter=day_counter,
-            amortization_amount=0.05 * nominal,
-            amortization_period=amortization_period,
-            amortization_first_date=amortization_first_date,
-            amortization_last_date=amortization_last_date,
+            per_coupon_nominals=tuple(per_coupon),
         )
 
     return make
@@ -220,9 +289,14 @@ def amortized_swap(calendar, currency, day_counter, issue_date, nominal, maturit
 
 
 class TestConstructionAndValidation:
-    def test_forward_marching_schedule(self, calendar, issue_date, maturity, schedule, tenor):
+    def test_forward_marching_schedule(
+        self, calendar, issue_date, maturity, schedule, tenor
+    ):
         start, end, period = issue_date, maturity, tenor
-        assert schedule.dates() == forward_marching_schedule(start, end, period, calendar).dates()
+        assert (
+            schedule.dates()
+            == forward_marching_schedule(start, end, period, calendar).dates()
+        )
 
     def test_update_dates_in_schedule(self, schedule):
         new_dates = (
@@ -241,7 +315,9 @@ class TestConstructionAndValidation:
             and s2.endOfMonth() == schedule.endOfMonth()
         )
 
-    def test_SwapLeg_construction_negative_nominal(self, calendar, currency, day_counter, issue_date, maturity, tenor):
+    def test_swap_leg_construction_negative_nominal(
+        self, calendar, currency, day_counter, issue_date, maturity, tenor
+    ):
         with pytest.raises(ValueError):
             _ = SwapLeg(
                 nominal=-1.0,
@@ -254,7 +330,9 @@ class TestConstructionAndValidation:
             )
 
     @pytest.mark.parametrize("bad_currency", ["sek", "Swedish krona", "UZS"])
-    def test_SwapLeg_construction_bad_currency(self, calendar, bad_currency, day_counter, issue_date, maturity, tenor):
+    def test_swap_leg_construction_bad_currency(
+        self, calendar, bad_currency, day_counter, issue_date, maturity, tenor
+    ):
         with pytest.raises(ValueError):
             _ = SwapLeg(
                 nominal=100_000_000,
@@ -266,16 +344,32 @@ class TestConstructionAndValidation:
                 day_counter=day_counter,
             )
 
-    def test_SwapLeg_immutability(self, swap_leg):
+    def test_swap_leg_immutability(self, swap_leg):
         leg = swap_leg()
         with pytest.raises(FrozenInstanceError):
             leg.tenor = Period("6M")
 
-    def test_FloatingLeg_requires_nonzero_gearing(self, floating_leg):
+    def test_floating_leg_requires_nonzero_gearing(self, floating_leg):
         with pytest.raises(ValueError):
             _ = floating_leg(valuation_date=Date(15, 1, 2024), gearing=0.0)
 
-    def test_AmortizedSwapLeg_never_negative(self, issue_date, maturity, tenor, calendar):
+    def test_amortized_swap_leg_never_negative(
+        self, issue_date, maturity, tenor, calendar
+    ):
+        # Build a leg whose per-coupon notionals drop to zero quickly
+        sch = Schedule(
+            issue_date,
+            maturity,
+            tenor,
+            calendar,
+            ModifiedFollowing,
+            Preceding,
+            DateGeneration.Forward,
+            False,
+        )
+        n_future = max(0, len(sch.dates()))
+        per_coupon = (0.0,) * n_future  # extreme over-amortization
+
         leg = AmortizedSwapLeg(
             nominal=100_000_000,
             currency="SEK",
@@ -284,10 +378,7 @@ class TestConstructionAndValidation:
             tenor=tenor,
             calendar=calendar,
             day_counter=Actual360(),
-            amortization_amount=1_000_000_000,  # huge, over-amortize
-            amortization_period=tenor,
-            amortization_first_date=issue_date,
-            amortization_last_date=maturity,
+            per_coupon_nominals=per_coupon,
         )
         ns = leg.nominals
         assert all(n >= 0 for n in ns)
@@ -300,12 +391,18 @@ class TestConstructionAndValidation:
 
 
 class TestScheduleInvariants:
-    @pytest.mark.parametrize("valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)])
-    def test_SwapLeg_schedule_matches_forward(self, swap_leg, valuation_date, issue_date, maturity, tenor, calendar):
+    @pytest.mark.parametrize(
+        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)]
+    )
+    def test_swap_leg_schedule_matches_forward(
+        self, swap_leg, valuation_date, issue_date, maturity, tenor, calendar
+    ):
         with SavedSettings():
             Settings.instance().evaluationDate = valuation_date
             leg = swap_leg(valuation_date=valuation_date)
-        expected = forward_marching_schedule(issue_date, maturity, tenor, calendar).dates()
+        expected = forward_marching_schedule(
+            issue_date, maturity, tenor, calendar
+        ).dates()
         assert leg.schedule.dates() == expected
 
 
@@ -315,7 +412,9 @@ class TestScheduleInvariants:
 
 
 class TestFutureScheduleBehavior:
-    @pytest.mark.parametrize("valuation_date, operator", [(Date(15, 1, 2024), ne), (Date(8, 7, 2024), eq)])
+    @pytest.mark.parametrize(
+        "valuation_date, operator", [(Date(15, 1, 2024), ne), (Date(8, 7, 2024), eq)]
+    )
     def test_future_schedule_1(self, operator, swap_leg, valuation_date):
         leg = swap_leg(valuation_date=valuation_date)
         expected = (
@@ -354,7 +453,8 @@ class TestFutureScheduleBehavior:
         assert len(leg.future_schedule.dates()) < len(leg.schedule.dates())
 
     @pytest.mark.parametrize(
-        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(10, 4, 2024), Date(15, 6, 2024)]
+        "valuation_date",
+        [Date(1, 10, 2023), Date(15, 1, 2024), Date(10, 4, 2024), Date(15, 6, 2024)],
     )
     def test_future_schedule_5(self, swap_leg, valuation_date):
         leg = swap_leg(valuation_date=valuation_date)
@@ -397,7 +497,8 @@ class TestNominals:
         assert all(n == leg.nominal for n in leg.nominals)
 
     @pytest.mark.parametrize(
-        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(10, 4, 2024), Date(15, 6, 2024)]
+        "valuation_date",
+        [Date(1, 10, 2023), Date(15, 1, 2024), Date(10, 4, 2024), Date(15, 6, 2024)],
     )
     def test_nominals_count_matches_schedule(self, swap_leg, valuation_date):
         leg = swap_leg(valuation_date=valuation_date)
@@ -408,9 +509,12 @@ class TestNominals:
         assert all(n == leg.nominal for n in leg.future_nominals)
 
     @pytest.mark.parametrize(
-        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(10, 4, 2024), Date(15, 6, 2024)]
+        "valuation_date",
+        [Date(1, 10, 2023), Date(15, 1, 2024), Date(10, 4, 2024), Date(15, 6, 2024)],
     )
-    def test_future_nominals_count_matches_future_schedule(self, swap_leg, valuation_date):
+    def test_future_nominals_count_matches_future_schedule(
+        self, swap_leg, valuation_date
+    ):
         leg = swap_leg(valuation_date=valuation_date)
         assert len(leg.future_nominals) == len(leg.future_schedule.dates())
 
@@ -421,19 +525,19 @@ class TestNominals:
 
 
 class TestInheritanceAndStructure:
-    def test_FloatingLeg_inheritance(self):
+    def test_floating_leg_inheritance(self):
         assert issubclass(FloatingLeg, SwapLeg)
 
-    def test_FixedLeg_inheritance(self):
+    def test_fixed_leg_inheritance(self):
         assert issubclass(FixedLeg, SwapLeg)
 
-    def test_AmortizedSwapLeg_inheritance(self):
+    def test_amortized_swap_leg_inheritance(self):
         assert issubclass(AmortizedSwapLeg, SwapLeg)
 
-    def test_AmortizedFloatingLeg_inheritance(self):
+    def test_amortized_floating_leg_inheritance(self):
         assert issubclass(AmortizedFloatingLeg, (SwapLeg, FloatingLeg))
 
-    def test_AmortizedFixedLeg_inheritance(self):
+    def test_amortized_fixed_leg_inheritance(self):
         assert issubclass(AmortizedFixedLeg, (SwapLeg, FixedLeg))
 
 
@@ -443,25 +547,36 @@ class TestInheritanceAndStructure:
 
 
 class TestFixedCashflowCorrectness:
-    @pytest.mark.parametrize("valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)])
-    def test_FixedLeg_cashflows_count(self, fixed_leg, valuation_date):
+    @pytest.mark.parametrize(
+        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)]
+    )
+    def test_fixed_leg_cashflows_count(self, fixed_leg, valuation_date):
         leg = fixed_leg(valuation_date=valuation_date, rate=0.02)
         assert len(leg.future_schedule.dates()) - 1 == len(leg.cashflows)
 
-    @pytest.mark.parametrize("valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)])
-    def test_FixedLeg_cashflows_amounts(self, fixed_leg, valuation_date):
+    @pytest.mark.parametrize(
+        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)]
+    )
+    def test_fixed_leg_cashflows_amounts(self, fixed_leg, valuation_date):
         leg = fixed_leg(valuation_date=valuation_date, rate=0.02)
         for i, cf in enumerate(leg.cashflows, start=1):
             c = as_coupon(cf)
-            T = leg.day_counter.yearFraction(c.accrualStartDate(), c.accrualEndDate())
+            t = leg.day_counter.yearFraction(c.accrualStartDate(), c.accrualEndDate())
             assert leg.future_schedule.dates()[i] == c.accrualEndDate()
-            assert pytest.approx(leg.nominal * leg.rate * T) == c.amount()
+            assert pytest.approx(leg.nominal * leg.rate * t) == c.amount()
 
-    @pytest.mark.parametrize("valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(14, 7, 2024)])
-    def test_AmortizedFixed_equals_Fixed_when_no_amort(self, fixed_leg, valuation_date):
-        """AmortizedFixedLeg (amort_amount=0) should match FixedLeg payments."""
+    @pytest.mark.parametrize(
+        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(14, 7, 2024)]
+    )
+    def test_amortized_fixed_equals_fixed_when_no_amort(
+        self, fixed_leg, valuation_date
+    ):
         rate = 0.02
         base = fixed_leg(valuation_date=valuation_date, rate=rate)
+
+        # Build per-coupon notionals identical to flat nominal on the FUTURE schedule
+        per_coupon = tuple(base.nominal for _ in base.schedule.dates())
+
         leg2 = AmortizedFixedLeg(
             nominal=base.nominal,
             currency=base.currency,
@@ -471,10 +586,7 @@ class TestFixedCashflowCorrectness:
             calendar=base.calendar,
             day_counter=base.day_counter,
             rate=rate,
-            amortization_amount=0.0,
-            amortization_period=base.tenor,
-            amortization_first_date=base.issue_date,
-            amortization_last_date=base.maturity,
+            per_coupon_nominals=per_coupon,
         )
         for cf1, cf2 in zip(base.cashflows, leg2.cashflows):
             assert as_coupon(cf1).amount() == as_coupon(cf2).amount()
@@ -486,8 +598,12 @@ class TestFixedCashflowCorrectness:
 
 
 class TestAmortizedNominalShapes:
-    @pytest.mark.parametrize("valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)])
-    def test_schedule_invariant(self, amortized_swap, issue_date, maturity, tenor, valuation_date):
+    @pytest.mark.parametrize(
+        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)]
+    )
+    def test_schedule_invariant(
+        self, amortized_swap, issue_date, maturity, tenor, valuation_date
+    ):
         leg1 = amortized_swap(
             valuation_date=valuation_date,
             amortization_period=tenor,
@@ -513,8 +629,12 @@ class TestAmortizedNominalShapes:
         )
         assert leg1.schedule.dates() == expected == leg2.schedule.dates()
 
-    @pytest.mark.parametrize("valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)])
-    def test_nominals_same_as_schedule(self, amortized_swap, issue_date, maturity, tenor, valuation_date):
+    @pytest.mark.parametrize(
+        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)]
+    )
+    def test_nominals_same_as_schedule(
+        self, amortized_swap, issue_date, maturity, tenor, valuation_date
+    ):
         leg = amortized_swap(
             valuation_date=valuation_date,
             amortization_period=tenor,
@@ -522,20 +642,24 @@ class TestAmortizedNominalShapes:
             amortization_last_date=maturity,
         )
         expected = (
-            95_000_000,
-            90_000_000,
-            85_000_000,
-            80_000_000,
-            75_000_000,
-            70_000_000,
-            65_000_000,
-            60_000_000,
-            55_000_000,
+            95_000_000.0,
+            90_000_000.0,
+            85_000_000.0,
+            80_000_000.0,
+            75_000_000.0,
+            70_000_000.0,
+            65_000_000.0,
+            60_000_000.0,
+            55_000_000.0,
         )
         assert leg.nominals == expected
 
-    @pytest.mark.parametrize("valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)])
-    def test_nominals_count(self, amortized_swap, issue_date, maturity, tenor, valuation_date):
+    @pytest.mark.parametrize(
+        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)]
+    )
+    def test_nominals_count(
+        self, amortized_swap, issue_date, maturity, tenor, valuation_date
+    ):
         leg = amortized_swap(
             valuation_date=valuation_date,
             amortization_period=tenor,
@@ -544,8 +668,12 @@ class TestAmortizedNominalShapes:
         )
         assert len(leg.nominals) == len(leg.schedule.dates())
 
-    @pytest.mark.parametrize("valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)])
-    def test_amort_starts_later(self, amortized_swap, issue_date, maturity, tenor, valuation_date):
+    @pytest.mark.parametrize(
+        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)]
+    )
+    def test_amort_starts_later(
+        self, amortized_swap, issue_date, maturity, tenor, valuation_date
+    ):
         leg = amortized_swap(
             valuation_date=valuation_date,
             amortization_period=tenor,
@@ -565,8 +693,12 @@ class TestAmortizedNominalShapes:
         )
         assert leg.nominals == expected
 
-    @pytest.mark.parametrize("valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)])
-    def test_amort_starts_later_ends_before(self, amortized_swap, issue_date, maturity, tenor, valuation_date):
+    @pytest.mark.parametrize(
+        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)]
+    )
+    def test_amort_starts_later_ends_before(
+        self, amortized_swap, issue_date, maturity, tenor, valuation_date
+    ):
         leg = amortized_swap(
             valuation_date=valuation_date,
             amortization_period=tenor,
@@ -586,8 +718,10 @@ class TestAmortizedNominalShapes:
         )
         assert leg.nominals == expected
 
-    @pytest.mark.parametrize("valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)])
-    def test_amort_every_6M(self, amortized_swap, issue_date, maturity, valuation_date):
+    @pytest.mark.parametrize(
+        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)]
+    )
+    def test_amort_every_6m(self, amortized_swap, issue_date, maturity, valuation_date):
         leg = amortized_swap(
             valuation_date=valuation_date,
             amortization_period=Period("6M"),
@@ -607,8 +741,12 @@ class TestAmortizedNominalShapes:
         )
         assert leg.nominals == expected
 
-    @pytest.mark.parametrize("valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)])
-    def test_amort_every_2M_inside_window(self, amortized_swap, issue_date, maturity, valuation_date):
+    @pytest.mark.parametrize(
+        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(30, 4, 2024)]
+    )
+    def test_amort_every_2m_inside_window(
+        self, amortized_swap, issue_date, maturity, valuation_date
+    ):
         leg = amortized_swap(
             valuation_date=valuation_date,
             amortization_period=Period("2M"),
@@ -616,15 +754,15 @@ class TestAmortizedNominalShapes:
             amortization_last_date=maturity - Period("2M"),
         )
         expected = (
-            100_000_000,
-            95_000_000,
-            85_000_000,
-            80_000_000,
-            70_000_000,
-            65_000_000,
-            55_000_000,
-            50_000_000,
-            45_000_000,
+            100_000_000.0,
+            95_000_000.0,
+            85_000_000.0,
+            80_000_000.0,
+            70_000_000.0,
+            65_000_000.0,
+            55_000_000.0,
+            50_000_000.0,
+            45_000_000.0,
         )
         assert leg.nominals == expected
 
@@ -635,7 +773,9 @@ class TestAmortizedNominalShapes:
 
 
 class TestFixedVsFloatingEquivalence:
-    @pytest.mark.parametrize("valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(14, 7, 2024)])
+    @pytest.mark.parametrize(
+        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(14, 7, 2024)]
+    )
     def test_equal_2pct_flat(self, fixed_leg, floating_leg, valuation_date):
         """Fixed 2% vs Floating with flat Libor 2%, no spread/gearing."""
         simple_rate, gearing, spread = 0.02, 1, 0.00
@@ -643,10 +783,14 @@ class TestFixedVsFloatingEquivalence:
 
         continuous_rate = (
             InterestRate(simple_rate, Actual360(), Simple, Daily)
-            .equivalentRate(Actual360(), Continuous, Daily, Date(15, 1, 2024), Date(15, 4, 2024))
+            .equivalentRate(
+                Actual360(), Continuous, Daily, Date(15, 1, 2024), Date(15, 4, 2024)
+            )
             .rate()
         )
-        flat_forward = FlatForward(valuation_date, continuous_rate, Actual360(), Continuous, Daily)
+        flat_forward = FlatForward(
+            valuation_date, continuous_rate, Actual360(), Continuous, Daily
+        )
 
         forecast_index = IborIndex(
             "Libor",
@@ -659,7 +803,12 @@ class TestFixedVsFloatingEquivalence:
             leg_fixed.day_counter,
             YieldTermStructureHandle(flat_forward),
         )
-        leg_float = floating_leg(valuation_date=valuation_date, gearing=gearing, spread=spread, idx=forecast_index)
+        leg_float = floating_leg(
+            valuation_date=valuation_date,
+            gearing=gearing,
+            spread=spread,
+            idx=forecast_index,
+        )
 
         forecast_index.addFixings(
             tuple(forecast_index.fixingDate(d) for d in leg_float.schedule.dates()),
@@ -672,11 +821,17 @@ class TestFixedVsFloatingEquivalence:
             assert c1.accrualStartDate() == c2.accrualStartDate()
             assert c1.accrualEndDate() == c2.accrualEndDate()
             assert c1.nominal() == c2.nominal()
-            assert pytest.approx(c1.rate(), rel=1e-4) == pytest.approx(c2.rate(), rel=1e-4)
-            assert pytest.approx(c1.amount(), rel=1e-4) == pytest.approx(c2.amount(), rel=1e-4)
+            assert pytest.approx(c1.rate(), rel=1e-4) == pytest.approx(
+                c2.rate(), rel=1e-4
+            )
+            assert pytest.approx(c1.amount(), rel=1e-4) == pytest.approx(
+                c2.amount(), rel=1e-4
+            )
         forecast_index.clearFixings()
 
-    @pytest.mark.parametrize("valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(14, 7, 2024)])
+    @pytest.mark.parametrize(
+        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(14, 7, 2024)]
+    )
     def test_equal_2pct_with_1pct_spread(self, fixed_leg, floating_leg, valuation_date):
         """Fixed 2% vs Floating flat Libor 1% + 1% spread."""
         simple_rate, gearing, spread = 0.02, 1, 0.01
@@ -684,10 +839,14 @@ class TestFixedVsFloatingEquivalence:
 
         continuous_rate = (
             InterestRate(simple_rate, Actual360(), Simple, Daily)
-            .equivalentRate(Actual360(), Continuous, Daily, Date(15, 1, 2024), Date(15, 4, 2024))
+            .equivalentRate(
+                Actual360(), Continuous, Daily, Date(15, 1, 2024), Date(15, 4, 2024)
+            )
             .rate()
         )
-        flat_forward = FlatForward(valuation_date, continuous_rate - spread, Actual360(), Continuous, Daily)
+        flat_forward = FlatForward(
+            valuation_date, continuous_rate - spread, Actual360(), Continuous, Daily
+        )
 
         forecast_index = IborIndex(
             "Libor",
@@ -700,7 +859,12 @@ class TestFixedVsFloatingEquivalence:
             leg_fixed.day_counter,
             YieldTermStructureHandle(flat_forward),
         )
-        leg_float = floating_leg(valuation_date=valuation_date, gearing=gearing, spread=spread, idx=forecast_index)
+        leg_float = floating_leg(
+            valuation_date=valuation_date,
+            gearing=gearing,
+            spread=spread,
+            idx=forecast_index,
+        )
 
         forecast_index.addFixings(
             tuple(forecast_index.fixingDate(d) for d in leg_float.schedule.dates()),
@@ -713,11 +877,17 @@ class TestFixedVsFloatingEquivalence:
             assert c1.accrualStartDate() == c2.accrualStartDate()
             assert c1.accrualEndDate() == c2.accrualEndDate()
             assert c1.nominal() == c2.nominal()
-            assert pytest.approx(c1.rate(), rel=1e-2) == pytest.approx(c2.rate(), rel=1e-2)
-            assert pytest.approx(c1.amount(), rel=1e-2) == pytest.approx(c2.amount(), rel=1e-2)
+            assert pytest.approx(c1.rate(), rel=1e-2) == pytest.approx(
+                c2.rate(), rel=1e-2
+            )
+            assert pytest.approx(c1.amount(), rel=1e-2) == pytest.approx(
+                c2.amount(), rel=1e-2
+            )
         forecast_index.clearFixings()
 
-    @pytest.mark.parametrize("valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(14, 7, 2024)])
+    @pytest.mark.parametrize(
+        "valuation_date", [Date(1, 10, 2023), Date(15, 1, 2024), Date(14, 7, 2024)]
+    )
     def test_equal_gearing2(self, fixed_leg, floating_leg, valuation_date):
         """Fixed 2% vs Floating flat Libor 1% with 2x gearing."""
         rate, gearing, spread = 0.02, 2, 0.00
@@ -739,7 +909,12 @@ class TestFixedVsFloatingEquivalence:
             leg_fixed.day_counter,
             YieldTermStructureHandle(flat_forward),
         )
-        leg_float = floating_leg(valuation_date=valuation_date, gearing=gearing, spread=spread, idx=forecast_index)
+        leg_float = floating_leg(
+            valuation_date=valuation_date,
+            gearing=gearing,
+            spread=spread,
+            idx=forecast_index,
+        )
 
         forecast_index.addFixings(
             tuple(forecast_index.fixingDate(d) for d in leg_float.schedule.dates()),
@@ -752,6 +927,10 @@ class TestFixedVsFloatingEquivalence:
             assert c1.accrualStartDate() == c2.accrualStartDate()
             assert c1.accrualEndDate() == c2.accrualEndDate()
             assert c1.nominal() == c2.nominal()
-            assert pytest.approx(c1.rate(), rel=1e-2) == pytest.approx(c2.rate(), rel=1e-2)
-            assert pytest.approx(c1.amount(), rel=1e-2) == pytest.approx(c2.amount(), rel=1e-2)
+            assert pytest.approx(c1.rate(), rel=1e-2) == pytest.approx(
+                c2.rate(), rel=1e-2
+            )
+            assert pytest.approx(c1.amount(), rel=1e-2) == pytest.approx(
+                c2.amount(), rel=1e-2
+            )
         forecast_index.clearFixings()
