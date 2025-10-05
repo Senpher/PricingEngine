@@ -16,9 +16,7 @@ def test_integrate_and_compute_repo():
         "hair_cut": 0,
     }
 
-    mtm, used_factors, warning_message = computation.compute(
-        "MTM", instr_type="Repo", factors=factors
-    )
+    mtm, used_factors, warning_message = computation.compute("MTM", instr_type="Repo", factors=factors)
     assert mtm == 18674886.900000095
     assert used_factors == {
         "initial_cash_amount": 999997171.2,

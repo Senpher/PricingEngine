@@ -1,147 +1,9 @@
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
-
 import numpy as np
-import QuantLib as ql
+from QuantLib import Period, Days, Weeks, Months, Years
+from dataclasses import dataclass, field
+from typing import Optional
 
-from pricingengine.termstructures.curve import Curve
-
-
-@dataclass
-class CurveData:
-    # Created at input
-    curveName: str
-    seriesNames: list[str]
-    maturities: np.ndarray  # Not used if we have ql_tenors
-    seriesValues: np.ndarray
-    ql_tenors: list[ql.Period]
-    # derived at init_curve
-    ql_ref_date: Optional[ql.Date] = None
-    ql_day_count: Optional[ql.DayCounter] = None
-    ql_maturities: Optional[List[ql.Date]] = None  # Strictly increasing dates
-    # indexing
-    name_to_idx: Dict[str, int] = field(default_factory=dict)
-
-    def init_curve(self, ref_date: ql.Date, day_count: ql.DayCounter) -> None:
-        # Init values and maturities
-        self.ql_day_count = day_count
-        self.ql_ref_date = ref_date
-        self.ql_maturities = [ref_date + t for t in self.ql_tenors]
-        # 1D index map for updating
-        self.name_to_idx = {name: i for i, name in enumerate(self.seriesNames)}
-
-    def ql_ZeroCurve(self, riskFactorDict: Optional[dict] = None) -> ql.ZeroCurve:
-        rates = self.seriesValues.copy()
-        if riskFactorDict:
-            get = riskFactorDict.get
-            for name, i in self.name_to_idx.items():
-                v = get(name)
-                if v is not None:
-                    rates[i] = float(v)
-
-        return ql.ZeroCurve(list(self.ql_maturities), rates.tolist(), self.ql_day_count)
-
-    def PE_Curve(
-        self, ql_value_date: ql.Date, ql_daycount
-    ):  ### Add creating of QL Curve here maybe? To fetch it. Maybe directly ZeroCurve etc. as well as needed?
-        ql_maturities = [ql_value_date + tenor for tenor in self.ql_tenors]
-        yield_curve = Curve(  # NOTE: Curve is Pricing Engine Object
-            dates=ql_maturities,
-            day_counter=ql_daycount,
-            quotes=tuple(self.seriesValues),
-        )
-        return yield_curve
-
-
-@dataclass
-class SurfaceData:
-    # Created at input
-    surfaceName: str
-    seriesNames: list[str]
-    maturities: np.ndarray
-    moneyness: np.ndarray
-    seriesValues: np.ndarray
-    ql_tenors: list[ql.Period]
-    # Derived parameter from init_surface (dependent on strike, value date etc.)
-    ql_maturities: list[ql.Date] = None
-    ql_ref_date: ql.Date = None
-    ql_dayCounter: ql.DayCounter = None
-    # Surface indexing
-    mny_levels: Optional[List[float]] = None
-    mat_axis: Optional[List[ql.Date]] = None
-    grid_positions: Dict[str, Tuple[int, int]] = field(default_factory=dict)
-    vol_grid: Optional[List[List[float]]] = None
-
-    def init_surface(self, ref_date: ql.Date, ql_dayCounter: ql.DayCounter):
-        # Init values and ql_maturities from the reference date.
-        # We deliberately avoid initializing absolute strikes; the volatility
-        # surface works with "sticky moneyness" rather than "sticky strikes".
-        self.ql_dayCounter = ql_dayCounter
-        self.ql_ref_date = ref_date
-        # Build canonical maturity axis (strictly increasing) and moneyness axis (unique + sorted). Pre-compute indexing
-        # Maturity
-        self.ql_maturities = [ref_date + t for t in self.ql_tenors]
-        self.mat_axis = sorted(set(self.ql_maturities))  # list[ql.Date], unique
-        # Moneyness
-        all_m = np.asarray(self.moneyness, dtype=float)
-        self.mny_levels = sorted(np.unique(all_m).tolist())
-        mny_index = {m: j for j, m in enumerate(self.mny_levels)}
-        mat_index = {d: i for i, d in enumerate(self.mat_axis)}
-
-        # Build a 2D baseline grid of the vol surface (rows = moneyness j, cols = maturities i)
-        J, I_ = len(self.mny_levels), len(self.mat_axis)
-        grid = [[0.0 for _ in range(I_)] for _ in range(J)]
-        N = len(self.seriesNames)
-        assert (
-            len(self.maturities) == N and len(self.moneyness) == N and len(self.seriesValues) == N
-        )  # Check consistency
-        for k in range(N):
-            d = self.ql_maturities[k]
-            m = float(self.moneyness[k])
-            j = mny_index[m]
-            i = mat_index[d]
-            grid[j][i] = float(self.seriesValues[k])
-        self.vol_grid = grid
-
-        # Keep track of which name corresponds to which moneyness+maturity for easy updating for risk (need seriesName)
-        self.grid_positions.clear()
-        if self.seriesNames is not None and all(n is not None for n in self.seriesNames):
-            names = list(self.seriesNames)
-            if len(set(names)) == len(names):
-                for k, name in enumerate(names):
-                    d = self.ql_maturities[k]
-                    m = float(self.moneyness[k])
-                    self.grid_positions[name] = (mny_index[m], mat_index[d])
-
-    def ql_surface(  # Create a surface from the vol grid. Updating it before if riskFactorDict provided.
-        self, spot_rate: float, riskFactorDict: Optional[dict] = None
-    ) -> ql.BlackVarianceSurface:
-        grid = [row[:] for row in self.vol_grid]
-        if riskFactorDict:
-            get = riskFactorDict.get
-            for name, (r, c) in self.grid_positions.items():
-                v = get(name)
-                if v is not None:
-                    grid[r][c] = float(v)
-
-        strikes = [
-            float(spot_rate) / m for m in self.mny_levels
-        ]  # Re-calculate the absolute strikes of surface with the (stressed) spot rate
-        # Assure increasing strikes by QL convention
-        # Moneyness : AHS data is spot/strike=moneynesss so we sort ascending by mn
-        perm = sorted(range(len(strikes)), key=lambda i: strikes[i])  # ascending by strike
-        strikes_sorted = [strikes[i] for i in perm]
-        grid_sorted = [grid[i] for i in perm]  # reorder rows the same way
-
-        surf = ql.BlackVarianceSurface(
-            self.ql_ref_date,
-            ql.TARGET(),
-            list(self.mat_axis),  # columns
-            list(strikes_sorted),  # rows
-            grid_sorted,  # J x I list-of-lists (floats)
-            self.ql_dayCounter,
-        )
-        return surf
+from portfolioengine.data_structures import CurveData, SurfaceData
 
 
 @dataclass
@@ -149,132 +11,133 @@ class MarketDataMapper:
     curveDataMapping: dict[str, CurveData] = field(default_factory=dict)
     surfaceDataMapping: dict[str, SurfaceData] = field(default_factory=dict)
 
-    def addCurveData(
+    def add_curve_data(
         self,
-        curveName: str,
-        seriesNames: list[str] = None,
+        curve_name: str,
+        series_names: list[str] = None,
         maturities: np.ndarray = None,
         tenors: list[str] = None,
-        seriesValues: np.ndarray = None,
+        series_values: np.ndarray = None,
     ) -> None:  # Can add validation error if not same length of arrays/lists
-        if seriesNames is None:  # create dummy array of length of either mat or tenor if no names are given.
+        if series_names is None:  # create dummy array of length of either mat or tenor if no names are given.
             tenor_len = len(tenors) if tenors is not None else 0
             maturities_len = len(maturities) if maturities is not None else 0
-            seriesNames = np.empty(max(tenor_len, maturities_len))
+            series_names = np.empty(max(tenor_len, maturities_len))
 
-        if seriesValues is None:
-            seriesValues = np.empty(len(seriesNames))  # set to empty array of same length of no values added (default)
+        if series_values is None:
+            series_values = np.empty(len(series_names))  # set to empty array of same length of no values added (default)
         else:
-            seriesValues = np.array(seriesValues)  # Convert to np.array if passed as list
+            series_values = np.array(series_values)  # Convert to np.array if passed as list
 
         if maturities is None:
-            maturities = np.empty(len(seriesNames))  # set to empty array of same length of no values added (default)
+            maturities = np.empty(len(series_names))  # set to empty array of same length of no values added (default)
         ql_maturities = np.empty(
-            len(seriesNames)
+            len(series_names)
         )  # Always set to empty and created with value date and tenors when setting up position
-        ql_tenors = [None] * len(seriesNames)
+        ql_tenors = [None] * len(series_names)
         if tenors[0] is not None:  # assuming all are None or none are
             for i, tenor in enumerate(tenors):
                 # Parse the tenor string
+                period = Period()
                 if tenor.endswith("D"):
-                    period = ql.Period(int(tenor[:-1]), ql.Days)
+                    period = Period(int(tenor[:-1]), Days)
                 elif tenor.endswith("W"):
-                    period = ql.Period(int(tenor[:-1]), ql.Weeks)
+                    period = Period(int(tenor[:-1]), Weeks)
                 elif tenor.endswith("M"):
-                    period = ql.Period(int(tenor[:-1]), ql.Months)
+                    period = Period(int(tenor[:-1]), Months)
                 elif tenor.endswith("Y"):
-                    period = ql.Period(int(tenor[:-1]), ql.Years)
+                    period = Period(int(tenor[:-1]), Years)
                 ql_tenors[i] = period
         else:
             ql_tenors = np.empty(
-                len(seriesNames)
+                len(series_names)
             )  # Set to empty if not specified (and use numerical maturities instead)
 
         # Sort by ql_tenors
         # Create (index, ql_tenor) pairs, sort by tenor, then extract indices
         indexed_tenors = [(i, tenor) for i, tenor in enumerate(ql_tenors)]
         indexed_tenors.sort(key=lambda x: x[1])  # Sort by Period objects
-        sortedIndices = [idx for idx, _ in indexed_tenors]
+        sorted_indices = [idx for idx, _ in indexed_tenors]
         # Sort arrays by maturities in ascending order before creating CurveData object
-        seriesNames = [seriesNames[i] for i in sortedIndices]
-        seriesValues = seriesValues[sortedIndices]
-        ql_tenors = [ql_tenors[i] for i in sortedIndices]  # Keep as list for QuantLib objects
+        series_names = [series_names[i] for i in sorted_indices]
+        series_values = series_values[sorted_indices]
+        ql_tenors = [ql_tenors[i] for i in sorted_indices]  # Keep as list for QuantLib objects
         # maturities = maturities[sortedIndices]
 
-        curveData = CurveData(
-            curveName=curveName,
-            seriesNames=seriesNames,
+        curve_data = CurveData(
+            curveName=curve_name,
+            seriesNames=series_names,
             maturities=maturities,
-            seriesValues=seriesValues,
+            seriesValues=series_values,
             ql_tenors=ql_tenors,
             ql_maturities=ql_maturities,
         )
-        self.curveDataMapping[curveName] = curveData
+        self.curveDataMapping[curve_name] = curve_data
 
-    def addSurfaceData(
+    def add_surface_data(
         self,
-        surfaceName: str,
-        seriesNames: list[str] = None,
+        surface_name: str,
+        series_names: list[str] = None,
         maturities: np.ndarray = None,
         strikes: np.ndarray = None,  # moneyness
         tenors: list[str] = None,
-        seriesValues: np.ndarray = None,
+        series_values: np.ndarray = None,
     ) -> None:
         # Create dummy array of length of either mat or tenor if no names are given
-        if seriesNames is None:
+        if series_names is None:
             tenor_len = len(tenors) if tenors is not None else 0
             maturities_len = len(maturities) if maturities is not None else 0
             strikes_len = len(strikes) if strikes is not None else 0
             max_len = max(tenor_len, maturities_len, strikes_len)
-            seriesNames = np.empty(max_len, dtype=object)
+            series_names = np.empty(max_len, dtype=object)
 
-        if seriesValues is None:
-            seriesValues = np.empty(len(seriesNames))
+        if series_values is None:
+            series_values = np.empty(len(series_names))
         else:
-            seriesValues = np.array(seriesValues)  # Convert to np.array if passed as list
+            series_values = np.array(series_values)  # Convert to np.array if passed as list
 
         if maturities is None:
-            maturities = np.empty(len(seriesNames))
+            maturities = np.empty(len(series_names))
 
         if strikes is None:
-            strikes = np.empty(len(seriesNames))
+            strikes = np.empty(len(series_names))
 
         # Always set to empty and created with value date and tenors when setting up position
-        ql_maturities = np.empty(len(seriesNames), dtype=object)
-        ql_tenors = [None] * len(seriesNames)
+        ql_maturities = np.empty(len(series_names), dtype=object)
+        ql_tenors = [None] * len(series_names)
 
         # Parse tenors if provided
         if tenors is not None and tenors[0] is not None:  # assuming all are None or none are
             for i, tenor in enumerate(tenors):
                 # Parse the tenor string
                 if tenor.endswith("D"):
-                    period = ql.Period(int(tenor[:-1]), ql.Days)
+                    period = Period(int(tenor[:-1]), Days)
                 elif tenor.endswith("W"):
-                    period = ql.Period(int(tenor[:-1]), ql.Weeks)
+                    period = Period(int(tenor[:-1]), Weeks)
                 elif tenor.endswith("M"):
-                    period = ql.Period(int(tenor[:-1]), ql.Months)
+                    period = Period(int(tenor[:-1]), Months)
                 elif tenor.endswith("Y"):
-                    period = ql.Period(int(tenor[:-1]), ql.Years)
+                    period = Period(int(tenor[:-1]), Years)
                 ql_tenors[i] = period
         else:
-            ql_tenors = np.empty(len(seriesNames), dtype=object)
+            ql_tenors = np.empty(len(series_names), dtype=object)
 
         # TODO: Add matrix support once the value date conversion logic is in
         # place (required for building ql_maturities on demand).
 
-        surfaceData = SurfaceData(
-            surfaceName=surfaceName,
-            seriesNames=seriesNames,
+        surface_data = SurfaceData(
+            surfaceName=surface_name,
+            seriesNames=series_names,
             maturities=maturities,
             moneyness=strikes,
-            seriesValues=seriesValues,
+            seriesValues=series_values,
             ql_tenors=ql_tenors,
             ql_maturities=ql_maturities,
         )
-        self.surfaceDataMapping[surfaceName] = surfaceData
+        self.surfaceDataMapping[surface_name] = surface_data
 
-    def getCurveData(self, curveName: str) -> Optional[CurveData]:
-        return self.curveDataMapping.get(curveName, None)
+    def get_curve_data(self, curve_name: str) -> Optional[CurveData]:
+        return self.curveDataMapping.get(curve_name, None)
 
-    def getSurfaceData(self, surfaceName: str) -> Optional[SurfaceData]:
-        return self.surfaceDataMapping.get(surfaceName, None)
+    def get_surface_data(self, surface_name: str) -> Optional[SurfaceData]:
+        return self.surfaceDataMapping.get(surface_name, None)

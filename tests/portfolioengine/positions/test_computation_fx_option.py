@@ -1098,9 +1098,7 @@ def test_integrate_and_compute_fx_option():
         },
     }
 
-    mtm, used_factors, warning_message = computation.compute(
-        "MTM", instr_type="FXOption", factors=factors
-    )
+    mtm, used_factors, warning_message = computation.compute("MTM", instr_type="FXOption", factors=factors)
     # assert mtm == -244009.95430339908
     assert mtm == -24460752.204384275
     # assert used_factors == {

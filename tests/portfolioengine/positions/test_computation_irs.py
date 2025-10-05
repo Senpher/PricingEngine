@@ -188,9 +188,7 @@ def test_integrate_and_compute_IRS():
         },
     }
 
-    mtm, used_factors, warning = computation.compute(
-        "MTM", instr_type="IRS", factors=factors
-    )
+    mtm, used_factors, warning = computation.compute("MTM", instr_type="IRS", factors=factors)
     assert mtm == 3486559.951516051
     assert used_factors == {
         "Pay (FloatingLeg)": [
@@ -480,9 +478,7 @@ def test_integrate_and_compute_AIRS():
         },
     }
 
-    mtm, used_factors, warning = computation.compute(
-        "MTM", instr_type="IRS", factors=factors
-    )
+    mtm, used_factors, warning = computation.compute("MTM", instr_type="IRS", factors=factors)
     assert mtm == -56009.00182373726
     assert used_factors == {
         "Date": ["2025-08-05", "2025-11-05", "2026-02-05"],
@@ -701,9 +697,7 @@ def test_integrate_and_compute_IRS_2():  ##Debug this one
             ],
         },
     }
-    mtm, used_factors, warning = computation.compute(
-        "MTM", instr_type="IRS", factors=factors
-    )
+    mtm, used_factors, warning = computation.compute("MTM", instr_type="IRS", factors=factors)
     assert mtm == 248654650.1245926
     assert used_factors == {
         "Date": [
@@ -972,9 +966,7 @@ def test_integrate_and_compute_IRS_3():  ##Debug this one
             ],
         },
     }
-    mtm, used_factors, warning = computation.compute(
-        "MTM", instr_type="IRS", factors=factors
-    )
+    mtm, used_factors, warning = computation.compute("MTM", instr_type="IRS", factors=factors)
     assert mtm == 290881645.2945019
     assert used_factors == {
         "Date": [
@@ -1263,9 +1255,7 @@ def test_integrate_and_compute_IRS_5():  ##Debug this one
             "value_date": "2025-07-30",
         },
     }
-    mtm, used_factors, warning = computation.compute(
-        "MTM", instr_type="IRS", factors=factors
-    )
+    mtm, used_factors, warning = computation.compute("MTM", instr_type="IRS", factors=factors)
     assert mtm == 248654650.1245926
 
 

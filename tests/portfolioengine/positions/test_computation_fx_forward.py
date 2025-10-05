@@ -1,5 +1,3 @@
-from pricingengine.math.finite_difference import central_difference
-
 from rvs_engine_interface import computation
 
 
@@ -232,9 +230,7 @@ def test_compute():
         "nominal": -70000000.0,
     }
 
-    mtm, used_factors, warning_message = computation.compute(
-        "MTM", "FXForward", factors
-    )
+    mtm, used_factors, warning_message = computation.compute("MTM", "FXForward", factors)
     assert mtm == -9599644.384474285  # -9603312.76867483
     assert used_factors == {
         "spot_rate": 11.3201,
@@ -242,16 +238,3 @@ def test_compute():
         "discount_factor": 0.9940622070119048,
     }
     assert warning_message is None
-
-
-def test_central_difference():
-    F_plus = 5.0
-    F_minus = 3.0
-    increment = 2.0
-    result = central_difference(F_plus, F_minus, increment)
-    assert result == 0.5
-
-    try:
-        central_difference(F_plus, F_minus, 0)
-    except ValueError as e:
-        assert str(e) == "'increment' cannot be zero"

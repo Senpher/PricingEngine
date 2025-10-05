@@ -15,7 +15,8 @@ def test_integrate_and_compute_equity_option():
         "style": "european",
         "spot": 2600.22,
         "maturity": "2025-11-19",
-        "discount_curve": {  # We don't have this data structed by tenors in RVS so using interpolated value directly with dummy tenor. Have to look into fetching this data properly at some point for PACE.
+        "discount_curve": {
+            # We don't have this data structed by tenors in RVS so using interpolated value directly with dummy tenor. Have to look into fetching this data properly at some point for PACE.
             "tenors": [
                 "1D",
                 "1W",
@@ -73,11 +74,13 @@ def test_integrate_and_compute_equity_option():
                 0.025431935985186,
             ],
         },
-        "dividend_curve": {  # We don't have this data structured by tenors in RVS so using interpolated value directly with dummy tenor. Have to look into fetching this data properly at some point for PACE.
+        "dividend_curve": {
+            # We don't have this data structured by tenors in RVS so using interpolated value directly with dummy tenor. Have to look into fetching this data properly at some point for PACE.
             "tenors": ["1D", "10Y"],
             "rates": [0.00845386373626286, 0.00845386373626286],
         },
-        "vol_surface": {  # We don't have this data structured by tenors in RVS so using interpolated value directly with dummy tenor. Have to look into fetching this data properly at some point for PACE.
+        "vol_surface": {
+            # We don't have this data structured by tenors in RVS so using interpolated value directly with dummy tenor. Have to look into fetching this data properly at some point for PACE.
             "tenors": [
                 "1M",
                 "1M",
@@ -330,9 +333,7 @@ def test_integrate_and_compute_equity_option():
         },
     }
 
-    mtm, used_factors, warning_message = computation.compute(
-        "MTM", instr_type="EquityOption", factors=factors
-    )
+    mtm, used_factors, warning_message = computation.compute("MTM", instr_type="EquityOption", factors=factors)
     # assert mtm == 4081078.128465333
     assert mtm == 407795695.85068727
     # assert used_factors == {

@@ -3,14 +3,13 @@
 
 from __future__ import annotations
 
+from QuantLib import Date
 from datetime import date
 from typing import Literal
 
-from QuantLib import Date
-
-from ..data_structures.QL_Mapping import ql_eval_date
 from .client_positions import ClientPosition
 from .equity_option import EquityOption as PortfolioEquityOption
+from ..data_structures.ql_mapping import ql_eval_date
 
 StyleKey = Literal["european", "american", "bermudan", "digital"]
 EngineKey = Literal["analytic", "fd", "baw", "bjerksund", "tree"]

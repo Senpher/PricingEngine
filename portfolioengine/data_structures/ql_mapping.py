@@ -1,6 +1,4 @@
-from contextlib import contextmanager
-from enum import Enum
-
+from QuantLib import Date as QLDate
 from QuantLib import (
     TARGET,
     Actual360,
@@ -17,8 +15,8 @@ from QuantLib import (
     USDCurrency,
     YieldTermStructureHandle,
 )
-from QuantLib import Date as QLDate
-
+from contextlib import contextmanager
+from enum import Enum
 from pricingengine.cashflows.swap_leg import (
     AmortizedFixedLeg,
     AmortizedFloatingLeg,

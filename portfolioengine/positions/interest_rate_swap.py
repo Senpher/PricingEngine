@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
-
 import numpy as np
 from QuantLib import (
     TARGET,
@@ -11,18 +9,18 @@ from QuantLib import (
     YieldTermStructureHandle,
     as_floating_rate_coupon,
 )
-
+from datetime import date
 from pricingengine.cashflows.swap_leg import FixedLeg, FloatingLeg
-from pricingengine.instruments.interest_rate_swap import InterestRateSwap
 
-from ..data_structures.market_data_mapper import MarketDataMapper
-from ..data_structures.QL_Mapping import (
+from pricingengine.instruments.interest_rate_swap import InterestRateSwap
+from .client_positions import ClientPosition
+from ..data_structures.ql_mapping import (
     QL_day_count_mapper,
     QL_swap_leg_mapper,
     generic_ibor,
     ql_eval_date,
 )
-from .client_positions import ClientPosition
+from ..data_structures.market_data_mapper import MarketDataMapper
 
 
 class IRS(ClientPosition):
@@ -95,25 +93,25 @@ class IRS(ClientPosition):
         md = MarketDataMapper()
 
         # Discount curve
-        md.addCurveData(
-            curveName="DISCOUNT_CURVE",
+        md.add_curve_data(
+            curve_name="DISCOUNT_CURVE",
             tenors=self.discount_curve["tenors"],
-            seriesValues=np.array(self.discount_curve["rates"]),
+            series_values=np.array(self.discount_curve["rates"]),
         )
-        disc = md.getCurveData("DISCOUNT_CURVE")
+        disc = md.get_curve_data("DISCOUNT_CURVE")
         disc.init_curve(self.ql_value_date, self.ql_curve_day_count)
-        ql_discount_curve = disc.ql_ZeroCurve()
+        ql_discount_curve = disc.ql_zero_curve()
         ql_discount_handle = YieldTermStructureHandle(ql_discount_curve)
 
         # Forecast curve
-        md.addCurveData(
-            curveName="FORECAST_CURVE",
+        md.add_curve_data(
+            curve_name="FORECAST_CURVE",
             tenors=self.forecast_curve["tenors"],
-            seriesValues=np.array(self.forecast_curve["rates"]),
+            series_values=np.array(self.forecast_curve["rates"]),
         )
-        fwd = md.getCurveData("FORECAST_CURVE")
+        fwd = md.get_curve_data("FORECAST_CURVE")
         fwd.init_curve(self.ql_value_date, self.ql_curve_day_count)
-        ql_forecast_curve = fwd.ql_ZeroCurve()
+        ql_forecast_curve = fwd.ql_zero_curve()
         ql_forecast_handle = YieldTermStructureHandle(ql_forecast_curve)
 
         return ql_discount_handle, ql_forecast_handle

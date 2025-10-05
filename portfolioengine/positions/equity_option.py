@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
-from typing import Literal
-
 import numpy as np
 from QuantLib import (
     Actual360,
@@ -17,6 +14,8 @@ from QuantLib import (
 from QuantLib import (
     Option as QLOption,
 )
+from datetime import date
+from typing import Literal
 
 # pricingengine instruments
 from pricingengine.instruments.equity_option import (
@@ -26,10 +25,9 @@ from pricingengine.instruments.equity_option import (
     EuropeanVanillaOption,
     OptionEngineParameters,
 )
-
-from ..data_structures.market_data_mapper import MarketDataMapper
-from ..data_structures.QL_Mapping import ql_eval_date
 from .client_positions import ClientPosition
+from ..data_structures.ql_mapping import ql_eval_date
+from ..data_structures.market_data_mapper import MarketDataMapper
 
 
 class EquityOption(ClientPosition):
@@ -114,27 +112,27 @@ class EquityOption(ClientPosition):
         self.engineParams = dict(engine_params or {})
 
         mdm = MarketDataMapper()
-        mdm.addCurveData(
-            curveName="DISCOUNT_CURVE",
+        mdm.add_curve_data(
+            curve_name="DISCOUNT_CURVE",
             tenors=discount_curve["tenors"],
-            seriesValues=np.array(discount_curve["rates"]),
+            series_values=np.array(discount_curve["rates"]),
         )
-        mdm.addCurveData(
-            curveName="DIVIDEND_CURVE",
+        mdm.add_curve_data(
+            curve_name="DIVIDEND_CURVE",
             tenors=dividend_curve["tenors"],
-            seriesValues=np.array(dividend_curve["rates"]),
+            series_values=np.array(dividend_curve["rates"]),
         )
-        mdm.addSurfaceData(
-            surfaceName="EQ_VOL_SURFACE",
+        mdm.add_surface_data(
+            surface_name="EQ_VOL_SURFACE",
             tenors=vol_surface["tenors"],
             strikes=np.array(vol_surface["strikes"], dtype=float),  # moneyness = spot/strike
-            seriesValues=np.array(vol_surface["vols"], dtype=float),
+            series_values=np.array(vol_surface["vols"], dtype=float),
         )
 
         # stash mapped curve data
-        self.discountCurveData = mdm.getCurveData("DISCOUNT_CURVE")
-        self.dividendCurveData = mdm.getCurveData("DIVIDEND_CURVE")
-        self.volSurfaceData = mdm.getSurfaceData("EQ_VOL_SURFACE")
+        self.discountCurveData = mdm.get_curve_data("DISCOUNT_CURVE")
+        self.dividendCurveData = mdm.get_curve_data("DIVIDEND_CURVE")
+        self.volSurfaceData = mdm.get_surface_data("EQ_VOL_SURFACE")
 
         # used risk factors cache (filled on first price)
         self.used_spot = None
@@ -197,8 +195,8 @@ class EquityOption(ClientPosition):
             self.dividendCurveData.init_curve(self.ql_value_date, Actual360())
             self.volSurfaceData.init_surface(self.ql_value_date, Actual365Fixed())
 
-            disc_curve = YieldTermStructureHandle(self.discountCurveData.ql_ZeroCurve())
-            div_curve = YieldTermStructureHandle(self.dividendCurveData.ql_ZeroCurve())
+            disc_curve = YieldTermStructureHandle(self.discountCurveData.ql_zero_curve())
+            div_curve = YieldTermStructureHandle(self.dividendCurveData.ql_zero_curve())
 
             ql_surf = self.volSurfaceData.ql_surface(spot_rate=self.spot)
             vol_handle = BlackVolTermStructureHandle(ql_surf)

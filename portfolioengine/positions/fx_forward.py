@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
-
 import numpy as np
 from QuantLib import (
     TARGET,
@@ -12,14 +10,14 @@ from QuantLib import (
     SimpleQuote,
     YieldTermStructureHandle,
 )
+from datetime import date
 
 from pricingengine.instruments.fx_forward import (
     FxForward,
 )
-
-from ..data_structures.market_data_mapper import MarketDataMapper
-from ..data_structures.QL_Mapping import fx_base_price_invert, ql_eval_date
 from .client_positions import ClientPosition
+from ..data_structures.ql_mapping import fx_base_price_invert, ql_eval_date
+from ..data_structures.market_data_mapper import MarketDataMapper
 
 
 class FXForward(ClientPosition):
@@ -49,27 +47,27 @@ class FXForward(ClientPosition):
         self.day_count = Actual360()
 
         mdm = MarketDataMapper()
-        mdm.addCurveData(
-            curveName="DISCOUNT_CURVE",
+        mdm.add_curve_data(
+            curve_name="DISCOUNT_CURVE",
             tenors=discount_curve["tenors"],
-            seriesValues=np.array(discount_curve["rates"]),
+            series_values=np.array(discount_curve["rates"]),
         )
         # fx_fwd_pts_curve is a list of two dicts: one for BASE, one for PRICE (to USD)
         # keep both; we will triangulate PRICE/BASE forwards below
-        mdm.addCurveData(
-            curveName="BASE_FX_FWD_PTS_CURVE",
+        mdm.add_curve_data(
+            curve_name="BASE_FX_FWD_PTS_CURVE",
             tenors=fx_fwd_pts_curve[0]["tenors"],
-            seriesValues=np.array(fx_fwd_pts_curve[0]["rates"]),
+            series_values=np.array(fx_fwd_pts_curve[0]["rates"]),
         )
-        mdm.addCurveData(
-            curveName="PRICE_FX_FWD_PTS_CURVE",
+        mdm.add_curve_data(
+            curve_name="PRICE_FX_FWD_PTS_CURVE",
             tenors=fx_fwd_pts_curve[1]["tenors"],
-            seriesValues=np.array(fx_fwd_pts_curve[1]["rates"]),
+            series_values=np.array(fx_fwd_pts_curve[1]["rates"]),
         )
 
-        self.discountCurveData = mdm.getCurveData("DISCOUNT_CURVE")
-        self.baseFXPointsCurveData = mdm.getCurveData("BASE_FX_FWD_PTS_CURVE")
-        self.priceFXPointsCurveData = mdm.getCurveData("PRICE_FX_FWD_PTS_CURVE")
+        self.discountCurveData = mdm.get_curve_data("DISCOUNT_CURVE")
+        self.baseFXPointsCurveData = mdm.get_curve_data("BASE_FX_FWD_PTS_CURVE")
+        self.priceFXPointsCurveData = mdm.get_curve_data("PRICE_FX_FWD_PTS_CURVE")
 
         # used risk factors (cached after first valuation)
         self.discount_factor = None
@@ -83,7 +81,7 @@ class FXForward(ClientPosition):
             self.baseFXPointsCurveData.init_curve(self.ql_value_date, self.day_count)
             self.priceFXPointsCurveData.init_curve(self.ql_value_date, self.day_count)
 
-            discount_handle = YieldTermStructureHandle(self.discountCurveData.ql_ZeroCurve())
+            discount_handle = YieldTermStructureHandle(self.discountCurveData.ql_zero_curve())
 
             # Compute spot S (PRICE/BASE), respecting market inversion flags
             if fx_base_price_invert(self.baseCCY):
