@@ -1,6 +1,7 @@
 """Helpers for mapping market data to QuantLib friendly structures."""
 
 from .curve import CurveData
+from .surface import SurfaceData
 from .market_data_mapper import MarketDataMapper
 from .ql_mapping import (
     QlCcyMapper,
@@ -11,7 +12,6 @@ from .ql_mapping import (
     GenericIbor,
     ql_eval_date,
 )
-from .surface import SurfaceData
 
 __all__ = [
     "CurveData",

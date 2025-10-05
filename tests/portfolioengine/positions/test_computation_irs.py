@@ -1,5 +1,6 @@
 from portfolioengine import computation
 
+
 def test_integrate_and_compute_IRS():
     factors = {  # from position SWAP202633
         "value_date": "2025-05-16",
