@@ -1,18 +1,10 @@
-# Portfolio engine FX option implementation built on top of the local
-# equity option wrapper.
-
 from __future__ import annotations
 
 from QuantLib import Date
 from datetime import date
-from typing import Literal
 
 from portfolioengine.data_structures import ql_eval_date
-from portfolioengine.positions import ClientPosition
-from portfolioengine.positions import EquityOption as PortfolioEquityOption
-
-StyleKey = Literal["european", "american", "bermudan", "digital"]
-EngineKey = Literal["analytic", "fd", "baw", "bjerksund", "tree"]
+from portfolioengine.positions import ClientPosition, EquityOption as PortfolioEquityOption, OptionStyleKey
 
 
 class FXOption(ClientPosition):
@@ -43,7 +35,7 @@ class FXOption(ClientPosition):
         pos_name: str | None,
         value_date: str | date,
         is_call: bool,
-        style: StyleKey,
+        style: OptionStyleKey,
         strike: float,
         # European/Digital -> maturity; Bermudan -> exercise_dates
         maturity: str | date | None = None,
@@ -59,7 +51,6 @@ class FXOption(ClientPosition):
         base_discount_curve: dict,  # -> EquityOption.dividend_curve (q)
         vol_surface: dict,  # -> EquityOption.vol_surface
         # engine selection
-        engine: EngineKey | None = None,
         engine_params: dict | None = None,
     ):
         self.posName = pos_name
@@ -83,11 +74,6 @@ class FXOption(ClientPosition):
         # cache diagnostics
         self._used: dict = {}
 
-        # prepare kwargs for the delegated EquityOption
-        ep = dict(engine_params or {})
-        if engine is not None:
-            ep.setdefault("engine", engine)  # prefer explicit engine arg
-
         self._eq_kwargs = dict(
             value_date=self.valueDate,
             is_call=is_call,
@@ -98,7 +84,7 @@ class FXOption(ClientPosition):
             cash_payoff=cash_payoff,
             nominal=int(nominal),
             contract_size=int(contract_size),
-            engine_params=ep,
+            engine_params=engine_params,
             pos_name=self.posName,
             ccy=self.priceCCY,  # position currency = PRICE currency
         )

@@ -29,6 +29,8 @@ from pricingengine.instruments import (
 )
 from pricingengine.instruments.common import OptionEngineParameters
 
+OptionStyleKey = Literal["european", "american", "bermudan", "digital"]
+
 
 class EquityOption(ClientPosition):
     """
@@ -55,7 +57,7 @@ class EquityOption(ClientPosition):
         *,
         value_date: str | date,
         is_call: bool = True,
-        style: Literal["european", "american", "bermudan", "digital"],
+        style: OptionStyleKey,
         strike: float,
         # not used for bermudan if exercise_dates provided
         maturity: str | date | None = None,
