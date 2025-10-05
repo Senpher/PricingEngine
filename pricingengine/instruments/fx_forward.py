@@ -1,272 +1,262 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import List, Dict, Any
 
-from pandas import DataFrame
 from QuantLib import (
-    Annual,
-    Continuous,
     Date,
-    QuoteHandle,
     Settings,
-    SimpleQuote,
     YieldTermStructureHandle,
-    ZeroSpreadedTermStructure,
+    QuoteHandle,
+    FxSwapRateHelper,
+    SimpleQuote,
+    PiecewiseLogLinearDiscount,
+    Period,
+    Days,
+    Years,
+    Months,
+    Weeks,
+    DayCounter,
+    Actual365Fixed,
+    ModifiedFollowing,
+    Calendar,
+    TARGET,
 )
 
+from pricingengine.currencies import CURRENCIES
 from pricingengine.instruments._instrument import Instrument
-from pricingengine.termstructures.curve_nodes import CurveNodes
 
 
 @dataclass(frozen=True, kw_only=True)
-class FXForward(Instrument):
-    """Represent a physically or cash-settled FX forward contract."""
+class FxForward(Instrument):
+    """
+    FX Forward priced from spot + FX swap *points* via FxSwapRateHelper(s).
+    The class bootstraps the implied foreign (BASE) discount curve internally.
 
+    Conventions:
+      - spot is PRICE/BASE = domestic/foreign (e.g., USD per EUR).
+      - fx_fwd_pts_curve: list of dicts like {'tenor': '6M', 'points': 0.00310}.
+        'points' must be in the SAME direction as spot (PRICE terms), i.e. F - S.
+      - PV currency = PRICE currency.
+
+    PV (long BASE / short PRICE):
+        NPV = sign * N * DF_domestic(T) * ( F(T) - K )
+
+      where:
+        sign = +1 if long_base else -1
+        N    = nominal in BASE units
+        F(T) = S * DF_foreign(T) / DF_domestic(T)
+        DF_domestic(T) = discount_domestic.discount(T)
+        K    = contracted forward (PRICE/BASE)
+    """
+
+    # ------- contract terms -------
+    nominal: float
+    forward_price: float  # K (PRICE per 1 BASE)
     maturity: Date
-    notional: float  # foreign currency amount (positive = long foreign)
-    forward_quote: QuoteHandle | float
-    spot_quote: QuoteHandle | float
-    domestic_curve: YieldTermStructureHandle | CurveNodes
-    foreign_curve: YieldTermStructureHandle | CurveNodes
-    is_long_foreign: bool = True
-    settlement: str = "physical"
+    base_currency: str
+    price_currency: str
+    long_base: bool = True
 
-    def __post_init__(self) -> None:
-        if self.notional == 0.0:
-            raise ValueError("notional must be non-zero")
+    # ------- market data inputs -------
+    spot: QuoteHandle  # PRICE/BASE
+    discount_domestic: YieldTermStructureHandle  # PRICE-currency (CSA) discount curve
+    fx_fwd_pts_curve: List[Dict[str, Any]]  # [{'tenor': '6M', 'points': 0.00310}, ...]
 
-        if self.settlement.lower() not in {"physical", "cash"}:
-            raise ValueError("settlement must be 'physical' or 'cash'")
+    # ------- market conventions (you can override per trade) -------
+    calendar: Calendar = TARGET()
+    fixing_days: int = 2
+    convention: int = ModifiedFollowing
+    end_of_month: bool = False
+    base_currency_is_collateral: bool = False
+    day_counter: DayCounter = Actual365Fixed()
 
-        object.__setattr__(self, "forward_quote", self._ensure_quote_handle(self.forward_quote, "forward_quote"))
-        object.__setattr__(self, "spot_quote", self._ensure_quote_handle(self.spot_quote, "spot_quote"))
-        object.__setattr__(self, "domestic_curve", self._ensure_curve_handle(self.domestic_curve, "domestic_curve"))
-        object.__setattr__(self, "foreign_curve", self._ensure_curve_handle(self.foreign_curve, "foreign_curve"))
+    # ------- built internally (frozen dataclass -> set via object.__setattr__) -------
+    discount_foreign: YieldTermStructureHandle | None = None  # implied BASE curve
 
-        for name, handle in (
-            ("domestic_curve", self.domestic_curve),
-            ("foreign_curve", self.foreign_curve),
+    # ---------- lifecycle / validation ----------
+    def __post_init__(self):
+        # basic checks
+        if self.nominal <= 0:
+            raise ValueError("'nominal' must be positive")
+        if self.forward_price <= 0:
+            raise ValueError("'forward_price' must be positive")
+        if (
+            self.base_currency not in CURRENCIES
+            or self.price_currency not in CURRENCIES
         ):
-            try:
-                handle.discount(self.maturity)
-            except RuntimeError as exc:  # empty relinkable handle
-                raise ValueError(f"{name} must be linked to a term structure") from exc
+            raise ValueError("Unknown currency code(s)")
+        if self.base_currency == self.price_currency:
+            raise ValueError("Base and price currencies must differ")
 
-    # ---------- helpers ----------
+        # spot sanity
+        try:
+            s = float(self.spot.value())
+        except Exception as e:
+            raise ValueError("spot (QuoteHandle) is not set or invalid") from e
+        if s <= 0.0:
+            raise ValueError("spot must be positive")
+
+        # domestic curve usable at maturity
+        self._ensure_handle_ok(
+            self.discount_domestic, "discount_domestic", self.maturity
+        )
+
+        # need at least one point
+        if not self.fx_fwd_pts_curve:
+            raise ValueError("fx_fwd_pts_curve must contain at least one item")
+
+        # --- build the foreign (BASE) curve from the list[dict] of points
+        foreign = self._build_foreign_curve_from_points()
+        # ensure usable at maturity and store
+        self._ensure_handle_ok(foreign, "bootstrapped_foreign", self.maturity)
+        object.__setattr__(self, "discount_foreign", foreign)
+
+    # ---------- static helpers ----------
     @staticmethod
-    def _ensure_quote_handle(value: QuoteHandle | float, name: str) -> QuoteHandle:
-        if isinstance(value, QuoteHandle):
-            return value
-        if isinstance(value, (int, float)):
-            return QuoteHandle(SimpleQuote(float(value)))
-        if isinstance(value, SimpleQuote):
-            return QuoteHandle(value)
-        raise TypeError(f"{name} must be a QuoteHandle, SimpleQuote, or float")
+    def _to_period(x: Any) -> Period:
+        if isinstance(x, Period):
+            return x
+        if isinstance(x, str):
+            s = x.strip().upper()
+            if s.endswith("W"):
+                return Period(int(s[:-1]), Weeks)
+            if s.endswith("M"):
+                return Period(int(s[:-1]), Months)
+            if s.endswith("Y"):
+                return Period(int(s[:-1]), Years)
+            if s.endswith("D"):
+                return Period(int(s[:-1]), Days)
+        raise ValueError(f"Unsupported tenor format: {x!r}")
 
     @staticmethod
-    def _ensure_curve_handle(value: YieldTermStructureHandle | CurveNodes, name: str) -> YieldTermStructureHandle:
-        if isinstance(value, YieldTermStructureHandle):
-            return value
-        if isinstance(value, CurveNodes):
-            return value.to_handle()
-        if hasattr(value, "discount") and hasattr(value, "dayCounter"):
-            return YieldTermStructureHandle(value)  # type: ignore[arg-type]
-        raise TypeError(f"{name} must be a YieldTermStructureHandle or CurveNodes")
+    def _ensure_handle_ok(h: YieldTermStructureHandle, name: str, d: Date) -> None:
+        try:
+            ts = h.currentLink()
+        except Exception as e:
+            raise ValueError(f"{name} is not a valid YieldTermStructureHandle") from e
+        ref = ts.referenceDate()
+        max_d = ts.maxDate()
+        if (d < ref or d > max_d) and not ts.allowsExtrapolation():
+            raise ValueError(
+                f"{name} cannot be used at {d.ISO()} "
+                f"(ref={ref.ISO()}, max={max_d.ISO()}, extrapolation disabled)"
+            )
+        if d >= ref:
+            _ = float(ts.discount(d))  # probe only when time >= 0
 
-    # ---------- properties ----------
+    def _build_foreign_curve_from_points(self) -> YieldTermStructureHandle:
+        """
+        Build BASE-currency discount curve from FX swap points using FxSwapRateHelper.
+        """
+        helpers: list[FxSwapRateHelper] = []
+        for item in self.fx_fwd_pts_curve:
+            if "tenor" not in item or "points" not in item:
+                raise ValueError(
+                    f"fx_fwd_pts_curve item must have 'tenor' and 'points': {item!r}"
+                )
+            tenor = self._to_period(item["tenor"])
+            pts = float(item["points"])
+            qh = QuoteHandle(SimpleQuote(pts))
+            helpers.append(
+                FxSwapRateHelper(
+                    qh,
+                    self.spot,
+                    tenor,
+                    self.fixing_days,
+                    self.calendar,
+                    self.convention,
+                    self.end_of_month,
+                    self.base_currency_is_collateral,
+                    self.discount_domestic,
+                )
+            )
+
+        eval_date = Settings.instance().evaluationDate
+        link = PiecewiseLogLinearDiscount(eval_date, helpers, self.day_counter)
+        link.enableExtrapolation()
+        return YieldTermStructureHandle(link)
+
+    # ---------- timeline ----------
     @property
     def valuation_date(self) -> Date:
         return Settings.instance().evaluationDate
 
     @property
-    def is_expired(self) -> bool:  # type: ignore[override]
-        return self.valuation_date >= self.maturity
-
-    @property
-    def direction(self) -> float:
-        return 1.0 if self.is_long_foreign else -1.0
-
-    @property
-    def spot(self) -> float:
-        return float(self.spot_quote.value())
-
-    @property
-    def forward_rate(self) -> float:
-        return float(self.forward_quote.value())
-
-    def domestic_discount_factor(self, curve: YieldTermStructureHandle | None = None) -> float:
-        handle = curve if curve is not None else self.domestic_curve
-        return float(handle.discount(self.maturity))
-
-    def foreign_discount_factor(self, curve: YieldTermStructureHandle | None = None) -> float:
-        handle = curve if curve is not None else self.foreign_curve
-        return float(handle.discount(self.maturity))
-
-    # ---------- pricing internals ----------
-    def _forward_market(
-        self,
-        *,
-        spot: QuoteHandle | None = None,
-        domestic_curve: YieldTermStructureHandle | None = None,
-        foreign_curve: YieldTermStructureHandle | None = None,
-    ) -> float:
-        spot_handle = spot if spot is not None else self.spot_quote
-        dom = domestic_curve if domestic_curve is not None else self.domestic_curve
-        fra = foreign_curve if foreign_curve is not None else self.foreign_curve
-
-        df_dom = float(dom.discount(self.maturity))
-        df_for = float(fra.discount(self.maturity))
-        if df_dom <= 0.0 or df_for <= 0.0:
-            raise ValueError("discount factors must be positive")
-        return float(spot_handle.value()) * df_for / df_dom
-
-    def _npv(
-        self,
-        *,
-        spot: QuoteHandle | None = None,
-        forward: QuoteHandle | None = None,
-        domestic_curve: YieldTermStructureHandle | None = None,
-        foreign_curve: YieldTermStructureHandle | None = None,
-    ) -> float:
-        forward_handle = forward if forward is not None else self.forward_quote
-        fwd_mkt = self._forward_market(
-            spot=spot,
-            domestic_curve=domestic_curve,
-            foreign_curve=foreign_curve,
-        )
-        k = float(forward_handle.value())
-        df_dom = self.domestic_discount_factor(domestic_curve)
-        return self.direction * self.notional * (fwd_mkt - k) * df_dom
+    def is_expired(self) -> bool:
+        return self.valuation_date > self.maturity  # not expired on maturity date
 
     # ---------- analytics ----------
-    def mark_to_market(self) -> float:  # type: ignore[override]
-        if self.is_expired:
-            return 0.0
-        return float(self._npv())
-
-    def mtm(self) -> float:
-        """Alias for backwards compatibility."""
-        return self.mark_to_market()
-
-    def par_forward(self) -> float:
-        """Fair forward FX rate implied by current spot and curves."""
-        return self._forward_market()
-
-    def forward_points(self) -> float:
-        return self.par_forward() - self.spot
-
-    def spot_delta(self) -> float:
-        if self.is_expired:
-            return 0.0
-        return self.direction * self.notional * self.foreign_discount_factor()
-
-    def strike_delta(self) -> float:
-        if self.is_expired:
-            return 0.0
-        return -self.direction * self.notional * self.domestic_discount_factor()
-
-    def ir01_domestic(self, bump_bp: float = 1.0) -> float:
-        if self.is_expired:
-            return 0.0
-        base = self._npv()
-        bumped = self._npv(domestic_curve=self._bump_curve(self.domestic_curve, bump_bp))
-        return (bumped - base) / bump_bp
-
-    def ir01_foreign(self, bump_bp: float = 1.0) -> float:
-        if self.is_expired:
-            return 0.0
-        base = self._npv()
-        bumped = self._npv(foreign_curve=self._bump_curve(self.foreign_curve, bump_bp))
-        return (bumped - base) / bump_bp
-
-    def currency_exposure(self) -> dict[str, float]:
+    def fair_forward(self) -> float:
         """
-        Return the forward's currency exposures (signed notionals).
+        Outright forward F(T) via CIP, *spot-normalised*.
 
-        Domestic exposure is reported in domestic currency units, foreign exposure
-        in foreign currency units. Positive values indicate long positions.
+        FX forwards are quoted for delivery from SPOT (T+2) to FAR.
+        The helpers were set up with SPOT→FAR, while our curve handles are ASOF→date.
+        So we include the spot normalisation factor DF_d(ASOF→SPOT)/DF_f(ASOF→SPOT).
         """
+        s = float(self.spot.value())
+        far = self.maturity
 
-        sign = self.direction
-        return {
-            "foreign": sign * float(self.notional),
-            "domestic": -sign * float(self.notional) * self.forward_rate,
-        }
-
-    def cashflow_table(self) -> DataFrame:
-        """Return a one-line cash-flow table for the forward maturity."""
-
-        pv = self.mark_to_market()
-        df_dom = self.domestic_discount_factor()
-        df_for = self.foreign_discount_factor()
-        data = [
-            {
-                "Date": self.maturity.ISO(),
-                "ForeignFlow": self.currency_exposure()["foreign"],
-                "DomesticFlow": self.currency_exposure()["domestic"],
-                "DF(domestic)": df_dom,
-                "DF(foreign)": df_for,
-                "Forward(market)": self.par_forward(),
-                "Forward(strike)": self.forward_rate,
-                "PV": pv,
-            }
-        ]
-        return DataFrame(data).set_index("Date")
-
-    # ---------- scenario utilities ----------
-    def with_spot(self, spot: QuoteHandle | float) -> "FXForward":
-        return replace(self, spot_quote=spot)
-
-    def with_forward(self, forward: QuoteHandle | float) -> "FXForward":
-        return replace(self, forward_quote=forward)
-
-    def with_notional(self, notional: float) -> "FXForward":
-        return replace(self, notional=notional)
-
-    # ---------- static helpers ----------
-    @staticmethod
-    def _bump_curve(curve: YieldTermStructureHandle, bump_bp: float) -> YieldTermStructureHandle:
-        spread = QuoteHandle(SimpleQuote(bump_bp / 10_000.0))
-        link = curve.currentLink()
-        bumped = ZeroSpreadedTermStructure(curve, spread, Continuous, Annual, link.dayCounter())
-        return YieldTermStructureHandle(bumped)
-
-    @classmethod
-    def from_nodes(
-        cls,
-        *,
-        maturity: Date,
-        notional: float,
-        forward_rate: float,
-        spot: float,
-        domestic_nodes: CurveNodes,
-        foreign_nodes: CurveNodes,
-        is_long_foreign: bool = True,
-        settlement: str = "physical",
-    ) -> "FXForward":
-        """Convenience constructor using :class:`CurveNodes`."""
-
-        return cls(
-            maturity=maturity,
-            notional=notional,
-            forward_quote=forward_rate,
-            spot_quote=spot,
-            domestic_curve=domestic_nodes,
-            foreign_curve=foreign_nodes,
-            is_long_foreign=is_long_foreign,
-            settlement=settlement,
+        # SPOT date using same conventions as the helpers
+        spot_date = self.calendar.advance(
+            self.valuation_date,
+            Period(self.fixing_days, Days),
+            self.convention,
+            self.end_of_month,
         )
 
-    def as_dict(self) -> dict[str, Any]:
-        """Serialize key attributes for debugging or logging."""
+        # ASOF→... discounts
+        df_d_far = float(self.discount_domestic.discount(far))
+        df_f_far = float(self.discount_foreign.discount(far))
+        df_d_spot = float(self.discount_domestic.discount(spot_date))
+        df_f_spot = float(self.discount_foreign.discount(spot_date))
 
-        return {
-            "valuation_date": self.valuation_date.ISO(),
-            "maturity": self.maturity.ISO(),
-            "notional": self.notional,
-            "forward_rate": self.forward_rate,
-            "spot": self.spot,
-            "is_long_foreign": self.is_long_foreign,
-            "settlement": self.settlement,
-        }
+        if min(df_d_far, df_f_far, df_d_spot, df_f_spot) <= 0.0:
+            raise ValueError("discount factors must be positive")
+
+        # Spot-normalised CIP
+        return s * (df_f_far / df_d_far) * (df_d_spot / df_f_spot)
+
+    def npv(self, *, breakdown: bool = False) -> float | dict:
+        if self.is_expired:
+            return (
+                0.0
+                if not breakdown
+                else {
+                    "npv": 0.0,
+                    "discount_factor": 1.0,
+                    "market_forward": None,
+                    "strike": self.forward_price,
+                    "notional": self.nominal,
+                    "base_currency": self.base_currency,
+                    "price_currency": self.price_currency,
+                }
+            )
+
+        df_dom = float(self.discount_domestic.discount(self.maturity))
+        f_mkt = self.fair_forward()
+        sign = 1.0 if self.long_base else -1.0
+        pv = sign * self.nominal * df_dom * (f_mkt - self.forward_price)
+
+        if breakdown:
+            return {
+                "npv": pv,
+                "discount_factor": df_dom,
+                "market_forward": f_mkt,
+                "strike": self.forward_price,
+                "notional": self.nominal,
+                "base_currency": self.base_currency,
+                "price_currency": self.price_currency,
+            }
+        return pv
+
+    # Back-compat alias
+    def mark_to_market(self, *, breakdown: bool = False) -> float | dict:
+        return self.npv(breakdown=breakdown)
+
+    # convenience "setter"
+    def with_forward(self, forward_price: float) -> "FxForward":
+        if forward_price <= 0:
+            raise ValueError("'forward_price' must be positive")
+        return replace(self, forward_price=forward_price)
