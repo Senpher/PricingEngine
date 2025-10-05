@@ -1,4 +1,4 @@
-from rvs_engine_interface import computation
+from portfolioengine import computation
 
 
 def test_integrate_and_compute_repo():

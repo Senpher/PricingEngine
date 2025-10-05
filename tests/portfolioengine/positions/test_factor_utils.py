@@ -1,4 +1,4 @@
-from rvs_engine_interface import factor_utils
+from portfolioengine import factor_utils
 
 
 def test_get_factors():

@@ -1,9 +1,4 @@
-from rvs_engine_interface import computation
-
-
-# from pytest_mock import MockerFixture
-# from pytest import raises
-
+from portfolioengine import computation
 
 def test_integrate_and_compute_IRS():
     factors = {  # from position SWAP202633
