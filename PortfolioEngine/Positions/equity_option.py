@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Literal
+from typing import Literal, get_args
 
 import numpy as np
 from QuantLib import (
@@ -101,7 +101,7 @@ class EquityOption(ClientPosition):
         self.day_count = Actual360()
 
         # style sanity
-        if self.style not in {"european", "american", "bermudan", "digital"}:
+        if self.style not in set(get_args(OptionStyleKey)):
             raise ValueError("style must be one of {'european','american','bermudan','digital'}")
         if self.style != "bermudan" and self.maturity is None:
             raise ValueError("maturity is required unless style='bermudan'")
