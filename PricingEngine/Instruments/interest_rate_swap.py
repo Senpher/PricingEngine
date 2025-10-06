@@ -112,7 +112,7 @@ class InterestRateSwap(Instrument):
             return self.paying_leg
         raise RuntimeError(f"swap is missing {cls.__name__}")
 
-    def _swap_ql(self) -> Swap:
+    def _ql_swap(self) -> Swap:
         """
         Returns a QuantLib `Swap` object.
 
@@ -131,7 +131,7 @@ class InterestRateSwap(Instrument):
         sw.setPricingEngine(self.discount_engine)
         return sw
 
-    def _vanilla_swap_ql(self) -> VanillaSwap:
+    def _ql_vanilla_swap(self) -> VanillaSwap:
         """
         Returns a QuantLib `VanillaSwap` object.
 
@@ -168,31 +168,31 @@ class InterestRateSwap(Instrument):
         return vs
 
     def vanilla(self) -> VanillaSwap:  # needed for Swaption
-        vs = self._vanilla_swap_ql()
+        vs = self._ql_vanilla_swap()
         return vs
 
     # ---------- public API ----------
     def npv(self) -> float:
         if self.is_expired:
             return 0.0
-        return self._swap_ql().NPV()
+        return self._ql_swap().NPV()
 
     def pv01(self) -> float:
         """Fixed-leg PV01 (coupon BPV): ΔNPV for +1 bp in the fixed coupon."""
         leg_index = 0 if (self.fixed_leg is self.paying_leg) else 1
-        return self._swap_ql().legBPS(leg_index)
+        return self._ql_swap().legBPS(leg_index)
 
     def dv01(self) -> float:
         """Floating-leg BPV to spread: ΔNPV for +1 bp in the floating spread."""
         leg_index = 0 if (self.floating_leg is self.paying_leg) else 1
-        return self._swap_ql().legBPS(leg_index)
+        return self._ql_swap().legBPS(leg_index)
 
     def ir01_discount(self, bump_bp: float = 1.0) -> float:
         """
         Curve BPV to a parallel bump of the *discounting* curve (in zero-yield terms).
         Positive means NPV rises when discount rates fall.
         """
-        base = self._swap_ql().NPV()
+        base = self._ql_swap().NPV()
 
         # Build a spreaded curve on top of the current discount handle.
         spread = QuoteHandle(SimpleQuote(bump_bp / 10_000.0))
@@ -219,7 +219,7 @@ class InterestRateSwap(Instrument):
         Curve BPV to a parallel bump of the *forecasting* (index) curve.
         Uses the floating leg's IborIndex forwarding handle; no external nodes.
         """
-        base = self._swap_ql().NPV()
+        base = self._ql_swap().NPV()
 
         # Bump the index's forwarding TS via a zero-spread wrapper.
         idx0 = self.floating_leg.index
@@ -248,7 +248,7 @@ class InterestRateSwap(Instrument):
     # ---------- diagnostics ----------
     def cashflow_table(self) -> DataFrame:
         """Bloomberg-style cashflow breakdown using the bound discount curve."""
-        sw = self._swap_ql()
+        sw = self._ql_swap()
         df_pay = DataFrame(data=({"Date": c.date(), "Pay": -c.amount()} for c in sw.leg(0)))
         df_rec = DataFrame(data=({"Date": c.date(), "Receive": c.amount()} for c in sw.leg(1)))
 
