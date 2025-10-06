@@ -116,9 +116,7 @@ class EquityOption(Option):
         return BlackScholesMertonProcess(self.spot, self.dividend_curve, self.risk_free_curve, self.vol)
 
     def _ql_option(self) -> QLVanillaOption:
-        ql = QLVanillaOption(self._payoff, self._exercise)
-        ql.setPricingEngine(self._engine(self._process()))
-        return ql
+        return self._ensure_cached_option()
 
     def _position_multiplier(self) -> float:
         # OPTION convention: per-position = per-unit * quantity * contract_size
@@ -127,7 +125,7 @@ class EquityOption(Option):
     def npv_per_unit(self) -> float:
         if self.is_expired:
             return 0.0
-        return float(self._ql_option().NPV())
+        return float(self._ensure_cached_option().NPV())
 
     # ------------- finite-difference bump helper -------------
     _EPS_S_REL = 1e-4
@@ -272,12 +270,12 @@ class EquityOption(Option):
         Per-unit theta, *per calendar day* (forward difference).
 
         Definition:
-          θ ≈ [V(t + Δt) − V(t)] / Δt_days, with Δt = 1 day by default.
+          theta ≈ [V(t + dt) - V(t)] / dt_days, with dt = 1 day by default.
 
         Notes:
-          - Sign: for most vanilla options, theta ≤ 0 (time decay).
-          - Units: result is per calendar day; use `total_theta()` to include quantity×contract_size.
-          - Engines that don’t expose theta will fall back to FD on the same process.
+          - Sign: for most vanilla options, theta <= 0 (time decay).
+          - Units: result is per calendar day; use `total_theta()` to include quantity*contract_size.
+          - Engines that don't expose theta will fall back to FD on the same process.
         """
         g = self._ql_greek("theta")
         if g is not None:
