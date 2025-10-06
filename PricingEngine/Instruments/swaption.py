@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from QuantLib import (
     BachelierSwaptionEngine,
@@ -33,8 +33,6 @@ from QuantLib import (
 from QuantLib import (
     Swaption as QLSwaption,
 )
-
-from typing import Any
 
 from PricingEngine.Instruments import InterestRateSwap
 from PricingEngine.Instruments.Common import Instrument
@@ -72,13 +70,6 @@ class Swaption(Instrument):
     hw_sigma: float | None = None
     hw_time_steps: int = 80
     time_grid: TimeGrid | None = None
-
-    _swaption_cache: QLSwaption | None = field(default=None, init=False, repr=False, compare=False)
-    _engine_cache: Any | None = field(default=None, init=False, repr=False, compare=False)
-    _hw_model_cache: HullWhite | None = field(default=None, init=False, repr=False, compare=False)
-    _cache_eval_date: Date | None = field(default=None, init=False, repr=False, compare=False)
-    _vol_link_cache: SwaptionVolatilityStructure | None = field(default=None, init=False, repr=False, compare=False)
-    _engine_kind_cache: str | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self):
         # Important: when receiving a cube through a handle link, QL SWIG does not downcast to Cube class
@@ -185,13 +176,13 @@ class Swaption(Instrument):
         # NOTE: in practice you might want calendar.advance(irs.issue_date, -index.fixingDays(), ...)
         return [self.irs.issue_date]
 
-    def _ql_exercise(self):
+    def _exercise_ql(self):
         exps = self._expiries()
         if len(exps) == 1:
             return EuropeanExercise(exps[0])
         return BermudanExercise(list(exps))
 
-    def _ql_settlement(self):
+    def _settlement_ql(self):
         return Settlement.Physical if self.settlement.lower() == "physical" else Settlement.Cash
 
     def _engine_european(self):
@@ -206,7 +197,15 @@ class Swaption(Instrument):
         raise ValueError("vol_type must be 'black' or 'bachelier'")
 
     def _engine_bermudan(self):
-        return self._build_tree_engine()
+        # Use provided params if given; otherwise calibrate to the surface
+        if self.hw_a is None or self.hw_sigma is None:
+            model = self._calibrate_hw()
+        else:
+            model = HullWhite(self.irs.discount_curve, float(self.hw_a), float(self.hw_sigma))
+
+        if self.time_grid is not None:
+            return TreeSwaptionEngine(model, self.time_grid, self.irs.discount_curve)
+        return TreeSwaptionEngine(model, int(self.hw_time_steps), self.irs.discount_curve)
 
     def _use_tree(self) -> bool:
         if self.engine == "hw":
@@ -214,9 +213,6 @@ class Swaption(Instrument):
         if self.engine == "surface":
             return False
         return len(self._expiries()) > 1
-
-    def _engine_kind(self) -> str:
-        return "tree" if self._use_tree() else "surface"
 
     # --- option tenor -> option date (on index calendar) ---
     def _option_date_from_tenor(self, opt_tenor: Period) -> Date:
@@ -387,74 +383,21 @@ class Swaption(Instrument):
         model.calibrate(helpers, method, end)
         return model
 
-    def _build_tree_engine(self) -> TreeSwaptionEngine:
-        eval_date = self.valuation_date
-        vol_link = self.vol_surface.currentLink()
-        cached_tree = (
-            isinstance(self._engine_cache, TreeSwaptionEngine)
-            and self._engine_kind_cache == "tree"
-            and self._cache_eval_date == eval_date
-            and self._vol_link_cache is vol_link
-        )
-        if cached_tree:
-            return self._engine_cache
+    def _swaption_ql(self) -> QLSwaption:
+        ex = self._exercise_ql()
+        swaption = QLSwaption(self.irs.vanilla(), ex, self._settlement_ql())
 
-        if self.hw_a is None or self.hw_sigma is None:
-            model = self._calibrate_hw()
+        if self._use_tree():
+            swaption.setPricingEngine(self._engine_bermudan())
         else:
-            model = HullWhite(self.irs.discount_curve, float(self.hw_a), float(self.hw_sigma))
-
-        if self.time_grid is not None:
-            engine = TreeSwaptionEngine(model, self.time_grid, self.irs.discount_curve)
-        else:
-            engine = TreeSwaptionEngine(model, int(self.hw_time_steps), self.irs.discount_curve)
-
-        object.__setattr__(self, "_hw_model_cache", model)
-        object.__setattr__(self, "_engine_cache", engine)
-        object.__setattr__(self, "_cache_eval_date", eval_date)
-        object.__setattr__(self, "_vol_link_cache", vol_link)
-        object.__setattr__(self, "_engine_kind_cache", "tree")
-        return engine
-
-    def _ensure_swaption(self) -> QLSwaption:
-        eval_date = self.valuation_date
-        vol_link = self.vol_surface.currentLink()
-        engine_kind = self._engine_kind()
-
-        if (
-            self._swaption_cache is not None
-            and self._cache_eval_date == eval_date
-            and self._vol_link_cache is vol_link
-            and self._engine_kind_cache == engine_kind
-        ):
-            return self._swaption_cache
-
-        exercise = self._ql_exercise()
-        vanilla = self.irs.vanilla()
-        swaption = QLSwaption(vanilla, exercise, self._ql_settlement())
-
-        if engine_kind == "tree":
-            engine = self._build_tree_engine()
-        else:
-            engine = self._engine_european()
-            object.__setattr__(self, "_engine_cache", engine)
-
-        swaption.setPricingEngine(engine)
-
-        object.__setattr__(self, "_swaption_cache", swaption)
-        object.__setattr__(self, "_cache_eval_date", eval_date)
-        object.__setattr__(self, "_vol_link_cache", vol_link)
-        object.__setattr__(self, "_engine_kind_cache", engine_kind)
+            swaption.setPricingEngine(self._engine_european())
         return swaption
-
-    def _ql_swaption(self) -> QLSwaption:
-        return self._ensure_swaption()
 
     # ---------- public API ----------
     def npv(self) -> float:
         if self.is_expired:
             return 0.0
-        npv = float(self._ql_swaption().NPV())
+        npv = float(self._swaption_ql().NPV())
         return npv if self.is_long else -npv
 
     def implied_volatility(
@@ -474,7 +417,7 @@ class Swaption(Instrument):
 
         # Build the payoff vanilla (with strike if provided)
         v = self.irs.vanilla()
-        swaption = QLSwaption(v, self._ql_exercise(), self._ql_settlement())
+        swaption = QLSwaption(v, self._exercise_ql(), self._settlement_ql())
 
         # Exact whole-month swap length from the underlying vanilla schedule
         sch = v.fixedSchedule()
