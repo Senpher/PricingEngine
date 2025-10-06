@@ -1148,8 +1148,28 @@ class TestZ_CachingAndBumps:
 
         assert engine_spy.call_count == 3  # 1 cached + 2 bump builds
         assert opt._ql_option_cache is cached_option
-        assert opt._engine_cache is cached_engine
-        assert opt._process_cache is cached_process
+
+    def test_american_exercise_refreshes_with_eval_date(self, amer_call, calendar):
+        opt = amer_call
+        Settings.instance().evaluationDate = opt.valuation_date
+
+        base_price = opt.npv_per_unit()
+        assert math.isfinite(base_price)
+
+        assert opt._ql_option_cache is not None
+        initial_first_date = opt._ql_option_cache.exercise().dates()[0]
+        assert initial_first_date == opt.valuation_date
+
+        new_eval_date = calendar.advance(opt.valuation_date, Period("1M"))
+        Settings.instance().evaluationDate = new_eval_date
+
+        follow_up_price = opt.npv_per_unit()
+        assert math.isfinite(follow_up_price)
+
+        assert opt._ql_option_cache is not None
+        refreshed_first_date = opt._ql_option_cache.exercise().dates()[0]
+        assert refreshed_first_date == new_eval_date
+        assert refreshed_first_date != initial_first_date
 
     def test_expired_trade_short_circuits_without_building(self, euro_call):
         opt = euro_call

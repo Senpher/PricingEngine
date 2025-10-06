@@ -389,6 +389,8 @@ class AmericanVanillaOption(EquityOption):
     strike: float
     maturity: Date
     engine_params: OptionEngineParameters = field(default_factory=OptionEngineParameters.baw)
+    _exercise_cache: AmericanExercise | None = field(default=None, init=False, repr=False, compare=False)
+    _exercise_cache_eval_date: Date | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -404,12 +406,17 @@ class AmericanVanillaOption(EquityOption):
     def _payoff(self) -> PlainVanillaPayoff:
         return PlainVanillaPayoff(self.option_type, self.strike)
 
-    @cached_property
+    @property
     def _exercise(self) -> AmericanExercise:
-        vd = self.valuation_date
-        last = self.maturity
-        earliest = vd if vd <= last else last
-        return AmericanExercise(earliest, last)
+        eval_date = self.valuation_date
+        exercise = self._exercise_cache
+        if exercise is None or self._exercise_cache_eval_date != eval_date:
+            last = self.maturity
+            earliest = eval_date if eval_date <= last else last
+            exercise = AmericanExercise(earliest, last)
+            object.__setattr__(self, "_exercise_cache", exercise)
+            object.__setattr__(self, "_exercise_cache_eval_date", eval_date)
+        return exercise
 
     def _engine(self, process: BlackScholesMertonProcess):
         k = self.engine_params.kind
