@@ -34,8 +34,6 @@ from QuantLib import (  # Core dates/settings
 )
 from QuantLib import (
     Option as QLOption,  # day count / comp
-)
-from QuantLib import (
     VanillaOption as QLVanillaOption,
 )
 
@@ -115,17 +113,9 @@ class EquityOption(Option):
     def _process(self) -> BlackScholesMertonProcess:
         return BlackScholesMertonProcess(self.spot, self.dividend_curve, self.risk_free_curve, self.vol)
 
-    def _ql_option(self) -> QLVanillaOption:
-        return self._ensure_cached_option()
-
     def _position_multiplier(self) -> float:
         # OPTION convention: per-position = per-unit * quantity * contract_size
         return float(self.quantity) * float(self.contract_size)
-
-    def npv_per_unit(self) -> float:
-        if self.is_expired:
-            return 0.0
-        return float(self._ensure_cached_option().NPV())
 
     # ------------- finite-difference bump helper -------------
     _EPS_S_REL = 1e-4
@@ -188,18 +178,23 @@ class EquityOption(Option):
         if bump_days:
             with SavedSettings():
                 Settings.instance().evaluationDate = self.valuation_date + Period(f"{int(bump_days)}D")
-                ql = QLVanillaOption(self._payoff, self._exercise)
-                ql.setPricingEngine(self._engine(proc))
-                return float(ql.NPV())
-        else:
-            ql = QLVanillaOption(self._payoff, self._exercise)
-            ql.setPricingEngine(self._engine(proc))
-            return float(ql.NPV())
+                option = QLVanillaOption(self._payoff, self._exercise)
+                option.setPricingEngine(self._engine(proc))
+                return float(option.NPV())
+
+        option = QLVanillaOption(self._payoff, self._exercise)
+        option.setPricingEngine(self._engine(proc))
+        return float(option.NPV())
 
     # ------------- engine-or-FD greek wrapper (per unit) -------------
     def _ql_greek(self, name: str) -> float | None:
+        if self.is_expired:
+            return 0.0
+
+        option = self._ensure_cached_option()
+
         try:
-            val = float(getattr(self._ql_option(), name)())
+            val = float(getattr(option, name)())
             self._trace_greek(greek=name, source="engine", engine=self.engine_params.kind, value=val)
             return val
         except Exception:

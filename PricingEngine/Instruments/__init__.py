@@ -4,6 +4,7 @@ from .cross_currency_swap import CrossCurrencySwap
 from .equity_option import (
     AmericanVanillaOption,
     BermudanVanillaOption,
+    EquityOption,
     EuropeanDigitalOption,
     EuropeanVanillaOption,
 )
@@ -20,6 +21,7 @@ from .swaption import Swaption
 __all__ = [
     "AmericanVanillaOption",
     "BermudanVanillaOption",
+    "EquityOption",
     "EuropeanDigitalOption",
     "EuropeanVanillaOption",
     "CrossCurrencySwap",
