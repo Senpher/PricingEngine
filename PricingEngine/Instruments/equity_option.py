@@ -115,19 +115,9 @@ class EquityOption(Option):
     def _process(self) -> BlackScholesMertonProcess:
         return BlackScholesMertonProcess(self.spot, self.dividend_curve, self.risk_free_curve, self.vol)
 
-    def _ql_option(self) -> QLVanillaOption:
-        ql = QLVanillaOption(self._payoff, self._exercise)
-        ql.setPricingEngine(self._engine(self._process()))
-        return ql
-
     def _position_multiplier(self) -> float:
         # OPTION convention: per-position = per-unit * quantity * contract_size
         return float(self.quantity) * float(self.contract_size)
-
-    def npv_per_unit(self) -> float:
-        if self.is_expired:
-            return 0.0
-        return float(self._ql_option().NPV())
 
     # ------------- finite-difference bump helper -------------
     _EPS_S_REL = 1e-4

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 
 from pandas import DataFrame, merge
@@ -44,6 +44,11 @@ class InterestRateSwap(Instrument):
     paying_leg: FixedLeg | FloatingLeg
     receiving_leg: FixedLeg | FloatingLeg
     discount_curve: YieldTermStructureHandle  # required; can be Relinkable
+
+    _swap_cache: Swap | None = field(default=None, init=False, repr=False, compare=False)
+    _swap_cache_eval: Date | None = field(default=None, init=False, repr=False, compare=False)
+    _vanilla_cache: VanillaSwap | None = field(default=None, init=False, repr=False, compare=False)
+    _vanilla_cache_eval: Date | None = field(default=None, init=False, repr=False, compare=False)
 
     # ---------- lifecycle & invariants ----------
     def __post_init__(self):
@@ -112,7 +117,23 @@ class InterestRateSwap(Instrument):
             return self.paying_leg
         raise RuntimeError(f"swap is missing {cls.__name__}")
 
-    def _swap_ql(self) -> Swap:
+    def _build_swap(self) -> Swap:
+        pay = self.paying_leg.cashflows
+        rec = self.receiving_leg.cashflows
+        swap = Swap(pay, rec)
+        swap.setPricingEngine(self.discount_engine)
+        return swap
+
+    def _ensure_swap_cache(self) -> Swap:
+        eval_date = self.valuation_date
+        if self._swap_cache is None or self._swap_cache_eval != eval_date:
+            swap = self._build_swap()
+            object.__setattr__(self, "_swap_cache", swap)
+            object.__setattr__(self, "_swap_cache_eval", eval_date)
+        assert self._swap_cache is not None
+        return self._swap_cache
+
+    def _ql_swap(self) -> Swap:
         """
         Returns a QuantLib `Swap` object.
 
@@ -125,25 +146,9 @@ class InterestRateSwap(Instrument):
 
         This method is a part of valuation framework for IRS.
         """
-        pay = self.paying_leg.cashflows
-        rec = self.receiving_leg.cashflows
-        sw = Swap(pay, rec)
-        sw.setPricingEngine(self.discount_engine)
-        return sw
+        return self._ensure_swap_cache()
 
-    def _vanilla_swap_ql(self) -> VanillaSwap:
-        """
-        Returns a QuantLib `VanillaSwap` object.
-
-        `VanillaSwap` is a native QuantLib object that has `NPV` method,
-        similar to `Swap` object, that can be used for pricing of vanilla
-        interest-rate swaps (IRS). However, `VanillaSwap` does not have support
-        amortization nor interest-rate leverage and therefore is not used for
-        IRS valuation.
-
-        `VanillaSwap` object also includes `fairRate` and `fairSpread` methods
-        and is therefore used for construction and valuation of swaptions.
-        """
+    def _build_vanilla_swap(self) -> VanillaSwap:
         swap_type = VanillaSwap.Payer if (self.fixed_leg is self.paying_leg) else VanillaSwap.Receiver
         fs = self.fixed_leg.future_schedule
         fls = self.floating_leg.future_schedule
@@ -167,32 +172,55 @@ class InterestRateSwap(Instrument):
         vs.setPricingEngine(self.discount_engine)
         return vs
 
+    def _ensure_vanilla_cache(self) -> VanillaSwap:
+        eval_date = self.valuation_date
+        if self._vanilla_cache is None or self._vanilla_cache_eval != eval_date:
+            vanilla = self._build_vanilla_swap()
+            object.__setattr__(self, "_vanilla_cache", vanilla)
+            object.__setattr__(self, "_vanilla_cache_eval", eval_date)
+        assert self._vanilla_cache is not None
+        return self._vanilla_cache
+
+    def _ql_vanilla_swap(self) -> VanillaSwap:
+        """
+        Returns a QuantLib `VanillaSwap` object.
+
+        `VanillaSwap` is a native QuantLib object that has `NPV` method,
+        similar to `Swap` object, that can be used for pricing of vanilla
+        interest-rate swaps (IRS). However, `VanillaSwap` does not have support
+        amortization nor interest-rate leverage and therefore is not used for
+        IRS valuation.
+
+        `VanillaSwap` object also includes `fairRate` and `fairSpread` methods
+        and is therefore used for construction and valuation of swaptions.
+        """
+        return self._ensure_vanilla_cache()
+
     def vanilla(self) -> VanillaSwap:  # needed for Swaption
-        vs = self._vanilla_swap_ql()
-        return vs
+        return self._ql_vanilla_swap()
 
     # ---------- public API ----------
     def npv(self) -> float:
         if self.is_expired:
             return 0.0
-        return self._swap_ql().NPV()
+        return self._ql_swap().NPV()
 
     def pv01(self) -> float:
         """Fixed-leg PV01 (coupon BPV): ΔNPV for +1 bp in the fixed coupon."""
         leg_index = 0 if (self.fixed_leg is self.paying_leg) else 1
-        return self._swap_ql().legBPS(leg_index)
+        return self._ql_swap().legBPS(leg_index)
 
     def dv01(self) -> float:
         """Floating-leg BPV to spread: ΔNPV for +1 bp in the floating spread."""
         leg_index = 0 if (self.floating_leg is self.paying_leg) else 1
-        return self._swap_ql().legBPS(leg_index)
+        return self._ql_swap().legBPS(leg_index)
 
     def ir01_discount(self, bump_bp: float = 1.0) -> float:
         """
         Curve BPV to a parallel bump of the *discounting* curve (in zero-yield terms).
         Positive means NPV rises when discount rates fall.
         """
-        base = self._swap_ql().NPV()
+        base = self._ql_swap().NPV()
 
         # Build a spreaded curve on top of the current discount handle.
         spread = QuoteHandle(SimpleQuote(bump_bp / 10_000.0))
@@ -219,7 +247,7 @@ class InterestRateSwap(Instrument):
         Curve BPV to a parallel bump of the *forecasting* (index) curve.
         Uses the floating leg's IborIndex forwarding handle; no external nodes.
         """
-        base = self._swap_ql().NPV()
+        base = self._ql_swap().NPV()
 
         # Bump the index's forwarding TS via a zero-spread wrapper.
         idx0 = self.floating_leg.index
@@ -248,7 +276,7 @@ class InterestRateSwap(Instrument):
     # ---------- diagnostics ----------
     def cashflow_table(self) -> DataFrame:
         """Bloomberg-style cashflow breakdown using the bound discount curve."""
-        sw = self._swap_ql()
+        sw = self._ql_swap()
         df_pay = DataFrame(data=({"Date": c.date(), "Pay": -c.amount()} for c in sw.leg(0)))
         df_rec = DataFrame(data=({"Date": c.date(), "Receive": c.amount()} for c in sw.leg(1)))
 
