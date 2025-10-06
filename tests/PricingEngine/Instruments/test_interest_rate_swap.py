@@ -363,7 +363,7 @@ class TestD_MarkToMarket:
 class TestE_VanillaEquivalence:
     def test_vanilla_swap_metrics_match(self, fixed_leg, floating_leg, discount_yts):
         """
-        _ql_vanilla_swap should match NPV and leg BPS used by the IRS wrapper.
+        _vanilla_swap_ql should match NPV and leg BPS used by the IRS wrapper.
         """
         with SavedSettings():
             Settings.instance().evaluationDate = Date(5, 5, 2024)
@@ -376,7 +376,7 @@ class TestE_VanillaEquivalence:
             pv01 = swap.pv01()
             dv01 = swap.dv01()
 
-            vs = swap._ql_vanilla_swap()
+            vs = swap._vanilla_swap_ql()
             assert npv == vs.NPV()
             assert pv01 == vs.fixedLegBPS()
             assert dv01 == vs.floatingLegBPS()

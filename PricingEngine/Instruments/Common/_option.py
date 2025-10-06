@@ -42,12 +42,6 @@ class Option(Instrument, ABC):
     quantity: int
     contract_size: int = 1  # set to 100 in equity options; 1 for FX/index by default
 
-    # cached QuantLib primitives (lazily built)
-    _ql_opt_cache: QLVanillaOption | None = field(default=None, init=False, repr=False, compare=False)
-    _engine_cache: Any | None = field(default=None, init=False, repr=False, compare=False)
-    _process_cache: BlackScholesMertonProcess | None = field(default=None, init=False, repr=False, compare=False)
-    _cache_eval_date: Date | None = field(default=None, init=False, repr=False, compare=False)
-
     # ---------- timeline / identity ----------
     @property
     def valuation_date(self) -> Date:
@@ -76,45 +70,19 @@ class Option(Instrument, ABC):
     @abstractmethod
     def _process(self) -> BlackScholesMertonProcess: ...
 
-    def _make_process(self) -> BlackScholesMertonProcess:
-        return self._process()
-
-    def _clear_cache(self) -> None:
-        object.__setattr__(self, "_ql_opt_cache", None)
-        object.__setattr__(self, "_engine_cache", None)
-        object.__setattr__(self, "_process_cache", None)
-        object.__setattr__(self, "_cache_eval_date", None)
-
-    def _ensure_built(self) -> None:
-        eval_date = Settings.instance().evaluationDate
-        if self._ql_opt_cache is not None and self._cache_eval_date == eval_date:
-            return
-
-        process = self._make_process()
-        engine = self._engine(process)
-        ql_option = QLVanillaOption(self._payoff, self._exercise)
-        ql_option.setPricingEngine(engine)
-
-        object.__setattr__(self, "_process_cache", process)
-        object.__setattr__(self, "_engine_cache", engine)
-        object.__setattr__(self, "_ql_opt_cache", ql_option)
-        object.__setattr__(self, "_cache_eval_date", eval_date)
+    @abstractmethod
+    def npv_per_unit(self) -> float: ...
 
     def _ql_option(self) -> QLVanillaOption:
-        self._ensure_built()
-        assert self._ql_opt_cache is not None  # for mypy / linters
-        return self._ql_opt_cache
+        opt = QLVanillaOption(self._payoff, self._exercise())
+        opt.setPricingEngine(self._engine)
+        return opt
 
     def _position_multiplier(self) -> int:
         # uniform scaling across Instruments
         return int(self.quantity) * int(self.contract_size)
 
     # ---------- public API ----------
-    def npv_per_unit(self) -> float:
-        if self.is_expired:
-            return 0.0
-        return float(self._ql_option().NPV())
-
     def npv(self) -> float:
         return self._position_multiplier() * self.npv_per_unit()
 
