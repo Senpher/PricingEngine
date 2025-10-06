@@ -176,13 +176,13 @@ class Swaption(Instrument):
         # NOTE: in practice you might want calendar.advance(irs.issue_date, -index.fixingDays(), ...)
         return [self.irs.issue_date]
 
-    def _exercise_ql(self):
+    def _ql_exercise(self):
         exps = self._expiries()
         if len(exps) == 1:
             return EuropeanExercise(exps[0])
         return BermudanExercise(list(exps))
 
-    def _settlement_ql(self):
+    def _ql_settlement(self):
         return Settlement.Physical if self.settlement.lower() == "physical" else Settlement.Cash
 
     def _engine_european(self):
@@ -383,9 +383,9 @@ class Swaption(Instrument):
         model.calibrate(helpers, method, end)
         return model
 
-    def _swaption_ql(self) -> QLSwaption:
-        ex = self._exercise_ql()
-        swaption = QLSwaption(self.irs.vanilla(), ex, self._settlement_ql())
+    def _ql_swaption(self) -> QLSwaption:
+        ex = self._ql_exercise()
+        swaption = QLSwaption(self.irs.vanilla(), ex, self._ql_settlement())
 
         if self._use_tree():
             swaption.setPricingEngine(self._engine_bermudan())
@@ -397,7 +397,7 @@ class Swaption(Instrument):
     def npv(self) -> float:
         if self.is_expired:
             return 0.0
-        npv = float(self._swaption_ql().NPV())
+        npv = float(self._ql_swaption().NPV())
         return npv if self.is_long else -npv
 
     def implied_volatility(
@@ -417,7 +417,7 @@ class Swaption(Instrument):
 
         # Build the payoff vanilla (with strike if provided)
         v = self.irs.vanilla()
-        swaption = QLSwaption(v, self._exercise_ql(), self._settlement_ql())
+        swaption = QLSwaption(v, self._ql_exercise(), self._ql_settlement())
 
         # Exact whole-month swap length from the underlying vanilla schedule
         sch = v.fixedSchedule()
