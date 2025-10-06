@@ -42,6 +42,11 @@ class Option(Instrument, ABC):
     quantity: int
     contract_size: int = 1  # set to 100 in equity options; 1 for FX/index by default
 
+    _ql_option_cache: QLVanillaOption | None = field(default=None, init=False, repr=False, compare=False)
+    _engine_cache: Any | None = field(default=None, init=False, repr=False, compare=False)
+    _process_cache: BlackScholesMertonProcess | None = field(default=None, init=False, repr=False, compare=False)
+    _cache_eval_date: Date | None = field(default=None, init=False, repr=False, compare=False)
+
     # ---------- timeline / identity ----------
     @property
     def valuation_date(self) -> Date:
@@ -70,13 +75,29 @@ class Option(Instrument, ABC):
     @abstractmethod
     def _process(self) -> BlackScholesMertonProcess: ...
 
-    @abstractmethod
-    def npv_per_unit(self) -> float: ...
+    def _ensure_cached_option(self) -> QLVanillaOption:
+        eval_date = Settings.instance().evaluationDate
+        option = self._ql_option_cache
+        if (
+            option is None
+            or self._engine_cache is None
+            or self._process_cache is None
+            or self._cache_eval_date != eval_date
+        ):
+            process = self._process()
+            engine = self._engine(process)
+            option = QLVanillaOption(self._payoff, self._exercise)
+            option.setPricingEngine(engine)
+
+            object.__setattr__(self, "_process_cache", process)
+            object.__setattr__(self, "_engine_cache", engine)
+            object.__setattr__(self, "_ql_option_cache", option)
+            object.__setattr__(self, "_cache_eval_date", eval_date)
+
+        return option
 
     def _ql_option(self) -> QLVanillaOption:
-        opt = QLVanillaOption(self._payoff, self._exercise())
-        opt.setPricingEngine(self._engine)
-        return opt
+        return self._ensure_cached_option()
 
     def _position_multiplier(self) -> int:
         # uniform scaling across Instruments
@@ -86,47 +107,52 @@ class Option(Instrument, ABC):
     def npv(self) -> float:
         return self._position_multiplier() * self.npv_per_unit()
 
+    def npv_per_unit(self) -> float:
+        if self.is_expired:
+            return 0.0
+        return float(self._ensure_cached_option().NPV())
+
     # Per-contract greeks; subclasses can override/extend
     # The defaults try to use the QL analytic greeks when available.
     def delta(self) -> float:
         if self.is_expired:
             return 0.0
         try:
-            return float(self._ql_option().delta())
-        except Exception:
-            raise NotImplementedError("Delta not available for this engine/model.")
+            return float(self._ensure_cached_option().delta())
+        except Exception as err:
+            raise NotImplementedError("Delta not available for this engine/model.") from err
 
     def gamma(self) -> float:
         if self.is_expired:
             return 0.0
         try:
-            return float(self._ql_option().gamma())
-        except Exception:
-            raise NotImplementedError("Gamma not available for this engine/model.")
+            return float(self._ensure_cached_option().gamma())
+        except Exception as err:
+            raise NotImplementedError("Gamma not available for this engine/model.") from err
 
     def vega(self) -> float:
         if self.is_expired:
             return 0.0
         try:
-            return float(self._ql_option().vega())
-        except Exception:
-            raise NotImplementedError("Vega not available for this engine/model.")
+            return float(self._ensure_cached_option().vega())
+        except Exception as err:
+            raise NotImplementedError("Vega not available for this engine/model.") from err
 
     def rho(self) -> float:
         if self.is_expired:
             return 0.0
         try:
-            return float(self._ql_option().rho())
-        except Exception:
-            raise NotImplementedError("Rho not available for this engine/model.")
+            return float(self._ensure_cached_option().rho())
+        except Exception as err:
+            raise NotImplementedError("Rho not available for this engine/model.") from err
 
     def theta(self) -> float:
         if self.is_expired:
             return 0.0
         try:
-            return float(self._ql_option().theta())
-        except Exception:
-            raise NotImplementedError("Theta not available for this engine/model.")
+            return float(self._ensure_cached_option().theta())
+        except Exception as err:
+            raise NotImplementedError("Theta not available for this engine/model.") from err
 
     # Scaled greeks (match `npv()` scaling)
     def scaled_delta(self) -> float:
