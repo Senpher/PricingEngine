@@ -2,6 +2,7 @@
 from copy import copy
 import dataclasses
 import math
+from unittest.mock import patch
 
 import pytest
 from QuantLib import (
@@ -32,6 +33,7 @@ from QuantLib import (
 from PricingEngine.Instruments import (
     AmericanVanillaOption,
     BermudanVanillaOption,
+    EquityOption,
     EuropeanDigitalOption,
     EuropeanVanillaOption,
 )
@@ -1073,6 +1075,98 @@ class TestE_EngineMatrixExhaustive:
                     getattr(ql, greek)()
                 o_val = getattr(opt, greek)()
                 assert math.isfinite(o_val), f"{type(opt).__name__}.{greek} must be finite via FD fallback"
+
+
+# ---------------------------------------------------------------------------
+# Regression: caching & bumping semantics
+# ---------------------------------------------------------------------------
+
+
+class TestZ_CachingAndBumps:
+    def test_repeated_price_and_greeks_reuse_cached_option(self, euro_call):
+        opt = euro_call
+
+        with (
+            patch.object(
+                EquityOption,
+                "_process",
+                wraps=EquityOption._process,
+                autospec=True,
+            ) as process_spy,
+            patch.object(
+                EuropeanVanillaOption,
+                "_engine",
+                wraps=EuropeanVanillaOption._engine,
+                autospec=True,
+            ) as engine_spy,
+        ):
+            price1 = opt.npv_per_unit()
+            price2 = opt.npv_per_unit()
+
+            assert price2 == pytest.approx(price1)
+
+            for name in ("delta", "gamma", "vega", "rho", "theta"):
+                first = getattr(opt, name)()
+                second = getattr(opt, name)()
+                assert second == pytest.approx(first)
+
+            cached_option = opt._ql_option_cache
+            cached_engine = opt._engine_cache
+            cached_process = opt._process_cache
+            assert cached_option is not None
+            assert cached_engine is not None
+            assert cached_process is not None
+
+        assert process_spy.call_count == 1
+        assert engine_spy.call_count == 1
+
+        assert cached_option is opt._ql_option_cache
+        assert cached_engine is opt._engine_cache
+        assert cached_process is opt._process_cache
+
+    def test_theta_fd_bump_uses_fresh_engine(self, euro_call):
+        opt = euro_call
+
+        with patch.object(
+            EuropeanVanillaOption,
+            "_engine",
+            wraps=EuropeanVanillaOption._engine,
+            autospec=True,
+        ) as engine_spy:
+            baseline_price = opt.npv_per_unit()
+            assert baseline_price == pytest.approx(opt.npv_per_unit())
+
+            cached_option = opt._ql_option_cache
+            cached_engine = opt._engine_cache
+            cached_process = opt._process_cache
+
+            with patch.object(QLVanillaOption, "theta", side_effect=RuntimeError("no theta")):
+                theta1 = opt.theta()
+                theta2 = opt.theta()
+
+            assert theta2 == pytest.approx(theta1)
+
+        assert engine_spy.call_count == 3  # 1 cached + 2 bump builds
+        assert opt._ql_option_cache is cached_option
+        assert opt._engine_cache is cached_engine
+        assert opt._process_cache is cached_process
+
+    def test_expired_trade_short_circuits_without_building(self, euro_call):
+        opt = euro_call
+
+        with SavedSettings():
+            Settings.instance().evaluationDate = opt.maturity + Period("5D")
+
+            assert opt.npv_per_unit() == 0.0
+            assert opt.delta() == 0.0
+            assert opt.gamma() == 0.0
+            assert opt.vega() == 0.0
+            assert opt.rho() == 0.0
+            assert opt.theta() == 0.0
+
+        assert opt._ql_option_cache is None
+        assert opt._engine_cache is None
+        assert opt._process_cache is None
 
 
 # ---------------------------------------------------------------------------
