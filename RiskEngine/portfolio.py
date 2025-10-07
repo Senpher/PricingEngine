@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, Optional
 
 from PricingEngine.Instruments.Common import Instrument
+
 from .context import MarketContext
 
 
@@ -11,9 +12,9 @@ from .context import MarketContext
 class Position:
     name: str
     instrument: Instrument  # All instruments must inherit from Instrument and implement npv(ctx)
-    currency: Optional[str] = None
-    underlying: Optional[str] = None
-    trade_id: Optional[str] = None
+    currency: str | None = None
+    underlying: str | None = None
+    trade_id: str | None = None
     # Add more metadata as needed for reporting or instrument construction
 
 
@@ -29,4 +30,11 @@ class Portfolio:
 
     def price(self, ctx: MarketContext) -> float:
         with ctx.at_eval():
-            return sum(p.instrument.npv(ctx) for p in self.positions)
+            total = 0.0
+            for position in self.positions:
+                instrument = position.instrument
+                try:
+                    total += instrument.npv(ctx)
+                except TypeError:
+                    total += instrument.npv()
+            return total

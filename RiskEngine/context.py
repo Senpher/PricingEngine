@@ -2,11 +2,20 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Dict, Tuple
 
 from QuantLib import (
-    Date, Settings, Actual360, Actual365Fixed, ZeroCurve, RelinkableYieldTermStructureHandle,
-    RelinkableBlackVolTermStructureHandle, BlackConstantVol, NullCalendar, SimpleQuote, RelinkableQuoteHandle, Period
+    Actual360,
+    Actual365Fixed,
+    BlackConstantVol,
+    Date,
+    NullCalendar,
+    Period,
+    RelinkableBlackVolTermStructureHandle,
+    RelinkableQuoteHandle,
+    RelinkableYieldTermStructureHandle,
+    Settings,
+    SimpleQuote,
+    ZeroCurve,
 )
 
 
@@ -15,23 +24,26 @@ class MarketContext:
     """Relinkable handles + simple quotes the portfolio will use."""
 
     as_of: Date
-    discount: Dict[str, RelinkableYieldTermStructureHandle]
-    dividend: Dict[str, RelinkableYieldTermStructureHandle]
-    vols: Dict[str, RelinkableBlackVolTermStructureHandle]
-    equity_spot: Dict[str, RelinkableQuoteHandle]
-    fx_spot: Dict[Tuple[str, str], RelinkableQuoteHandle]
-    fx_fwd_points: Dict[Tuple[str, str], Dict[str, RelinkableQuoteHandle]]
+    discount: dict[str, RelinkableYieldTermStructureHandle]
+    dividend: dict[str, RelinkableYieldTermStructureHandle]
+    vols: dict[str, RelinkableBlackVolTermStructureHandle]
+    equity_spot: dict[str, RelinkableQuoteHandle]
+    fx_spot: dict[tuple[str, str], RelinkableQuoteHandle]
+    fx_fwd_points: dict[tuple[str, str], dict[str, RelinkableQuoteHandle]]
 
     @classmethod
-    def build_dummy(cls) -> "MarketContext":
+    def build_dummy(cls) -> MarketContext:
         as_of = Date(24, 7, 2025)
         Settings.instance().evaluationDate = as_of
         dc360 = Actual360()
         dc365 = Actual365Fixed()
 
         def zero_curve(rates, tenors):
-            dates = [as_of + Period(t) for t in tenors]
-            return ZeroCurve(dates, rates, dc360)
+            dates = [as_of] + [as_of + Period(t) for t in tenors]
+            levels = [rates[0], *list(rates)]
+            curve = ZeroCurve(dates, levels, dc360)
+            curve.enableExtrapolation()
+            return curve
 
         sek_disc_base = zero_curve(
             [0.0185, 0.0182, 0.0180, 0.0181, 0.0184, 0.0190],
@@ -48,7 +60,9 @@ class MarketContext:
         def flat_zero(level):
             dates = [as_of, as_of + Period("10Y")]
             rates = [level, level]
-            return ZeroCurve(dates, rates, dc360)
+            curve = ZeroCurve(dates, rates, dc360)
+            curve.enableExtrapolation()
+            return curve
 
         dividend = {
             "OMX": RelinkableYieldTermStructureHandle(flat_zero(0.008)),
@@ -81,8 +95,7 @@ class MarketContext:
             }
         }
         fx_fwd_points = {
-            k: {tenor: RelinkableQuoteHandle(q) for tenor, q in v.items()}
-            for k, v in fx_fwd_point_quotes.items()
+            k: {tenor: RelinkableQuoteHandle(q) for tenor, q in v.items()} for k, v in fx_fwd_point_quotes.items()
         }
         return cls(
             as_of=as_of,
@@ -103,7 +116,7 @@ class MarketContext:
         finally:
             Settings.instance().evaluationDate = saved
 
-    def copy(self) -> "MarketContext":
+    def copy(self) -> MarketContext:
         """Create a shallow copy of the MarketContext with new handles and quotes."""
         # Recreate all handles and quotes using the same values
         as_of = Date(self.as_of.dayOfMonth(), self.as_of.month(), self.as_of.year())
