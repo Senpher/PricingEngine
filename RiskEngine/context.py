@@ -1,171 +1,127 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass, field
-from types import MappingProxyType
+from dataclasses import dataclass
+from typing import Dict, Tuple
 
 from QuantLib import (
-    Actual365Fixed,
-    BlackConstantVol,
-    Date,
-    FlatForward,
-    NullCalendar,
-    QuoteHandle,
-    RelinkableBlackVolTermStructureHandle,
-    RelinkableYieldTermStructureHandle,
-    SavedSettings,
-    Settings,
-    SimpleQuote,
+    Date, Settings, Actual360, Actual365Fixed, ZeroCurve, RelinkableYieldTermStructureHandle,
+    RelinkableBlackVolTermStructureHandle, BlackConstantVol, NullCalendar, SimpleQuote, RelinkableQuoteHandle, Period
 )
 
 
 @dataclass
 class MarketContext:
-    """Container for market data expressed as QuantLib handles.
+    """Relinkable handles + simple quotes the portfolio will use."""
 
-    The context stores both the relinkable handles that instruments consume and
-    the underlying :class:`~QuantLib.SimpleQuote` objects that scenarios mutate.
-    """
+    as_of: Date
+    discount: Dict[str, RelinkableYieldTermStructureHandle]
+    dividend: Dict[str, RelinkableYieldTermStructureHandle]
+    vols: Dict[str, RelinkableBlackVolTermStructureHandle]
+    equity_spot: Dict[str, RelinkableQuoteHandle]
+    fx_spot: Dict[Tuple[str, str], RelinkableQuoteHandle]
+    fx_fwd_points: Dict[Tuple[str, str], Dict[str, RelinkableQuoteHandle]]
 
-    evaluation_date: Date
-    base_currency: str = "SEK"
-    discount: dict[str, RelinkableYieldTermStructureHandle] = field(default_factory=dict)
-    discount_quotes: dict[str, SimpleQuote] = field(default_factory=dict)
-    dividend: dict[str, RelinkableYieldTermStructureHandle] = field(default_factory=dict)
-    dividend_quotes: dict[str, SimpleQuote] = field(default_factory=dict)
-    vols: dict[str, RelinkableBlackVolTermStructureHandle] = field(default_factory=dict)
-    vol_quotes: dict[str, SimpleQuote] = field(default_factory=dict)
-    equity_spot: dict[str, QuoteHandle] = field(default_factory=dict)
-    equity_spot_quotes: dict[str, SimpleQuote] = field(default_factory=dict)
-    fx_spot: dict[tuple[str, str], QuoteHandle] = field(default_factory=dict)
-    fx_spot_quotes: dict[tuple[str, str], SimpleQuote] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.evaluation_date, Date):
-            raise TypeError("evaluation_date must be a QuantLib.Date instance")
-
-    # ------------------------------------------------------------------
-    # Construction helpers
-    # ------------------------------------------------------------------
     @classmethod
-    def build_dummy(cls) -> MarketContext:
-        """Create a simple context used in tests and tutorials.
+    def build_dummy(cls) -> "MarketContext":
+        as_of = Date(24, 7, 2025)
+        Settings.instance().evaluationDate = as_of
+        dc360 = Actual360()
+        dc365 = Actual365Fixed()
 
-        The dummy context includes:
-        - SEK and USD discount curves (flat)
-        - OMX dividend curve (flat)
-        - Constant volatility surface for OMX
-        - Spot quotes for OMX equity and USD/SEK FX
-        """
+        def zero_curve(rates, tenors):
+            dates = [as_of + Period(t) for t in tenors]
+            return ZeroCurve(dates, rates, dc360)
 
-        evaluation_date = Date(2, 1, 2024)
-        ctx = cls(evaluation_date=evaluation_date, base_currency="SEK")
+        sek_disc_base = zero_curve(
+            [0.0185, 0.0182, 0.0180, 0.0181, 0.0184, 0.0190],
+            ["1M", "3M", "6M", "9M", "1Y", "2Y"],
+        )
+        usd_disc_base = zero_curve(
+            [0.045, 0.044, 0.043, 0.0425, 0.0420, 0.041],
+            ["1M", "3M", "6M", "9M", "1Y", "2Y"],
+        )
+        rl_sek = RelinkableYieldTermStructureHandle(sek_disc_base)
+        rl_usd = RelinkableYieldTermStructureHandle(usd_disc_base)
+        discount = {"SEK": rl_sek, "USD": rl_usd}
 
-        ctx.add_discount_curve("SEK", rate=0.02)
-        ctx.add_discount_curve("USD", rate=0.03)
-        ctx.add_dividend_curve("OMX", rate=0.01)
-        ctx.add_vol_surface("OMX_ATM", volatility=0.20)
-        ctx.add_equity_spot("OMX", spot=2300.0)
-        ctx.add_fx_spot(("SEK", "USD"), spot=0.095)
-        ctx.add_fx_spot(("USD", "SEK"), spot=10.50)
-        return ctx
+        def flat_zero(level):
+            dates = [as_of, as_of + Period("10Y")]
+            rates = [level, level]
+            return ZeroCurve(dates, rates, dc360)
 
-    # ------------------------------------------------------------------
-    # Adders
-    # ------------------------------------------------------------------
-    def add_discount_curve(self, currency: str, *, rate: float, day_counter: Actual365Fixed | None = None) -> None:
-        quote = SimpleQuote(rate)
-        dc = day_counter or Actual365Fixed()
-        curve = FlatForward(self.evaluation_date, QuoteHandle(quote), dc)
-        handle = RelinkableYieldTermStructureHandle()
-        handle.linkTo(curve)
-        self.discount[currency] = handle
-        self.discount_quotes[currency] = quote
+        dividend = {
+            "OMX": RelinkableYieldTermStructureHandle(flat_zero(0.008)),
+            "SPX": RelinkableYieldTermStructureHandle(flat_zero(0.015)),
+        }
 
-    def add_dividend_curve(self, equity: str, *, rate: float, day_counter: Actual365Fixed | None = None) -> None:
-        quote = SimpleQuote(rate)
-        dc = day_counter or Actual365Fixed()
-        curve = FlatForward(self.evaluation_date, QuoteHandle(quote), dc)
-        handle = RelinkableYieldTermStructureHandle()
-        handle.linkTo(curve)
-        self.dividend[equity] = handle
-        self.dividend_quotes[equity] = quote
+        def flat_vol(level):
+            return BlackConstantVol(as_of, NullCalendar(), level, dc365)
 
-    def add_vol_surface(
-        self,
-        code: str,
-        *,
-        volatility: float,
-        day_counter: Actual365Fixed | None = None,
-        calendar: NullCalendar | None = None,
-    ) -> None:
-        vol_quote = SimpleQuote(volatility)
-        dc = day_counter or Actual365Fixed()
-        cal = calendar or NullCalendar()
-        surface = BlackConstantVol(self.evaluation_date, cal, QuoteHandle(vol_quote), dc)
-        handle = RelinkableBlackVolTermStructureHandle()
-        handle.linkTo(surface)
-        self.vols[code] = handle
-        self.vol_quotes[code] = vol_quote
+        vols = {
+            "OMX_ATM": RelinkableBlackVolTermStructureHandle(flat_vol(0.18)),
+            "SPX_ATM": RelinkableBlackVolTermStructureHandle(flat_vol(0.22)),
+        }
+        # Equity spot
+        equity_spot_quotes = {
+            "OMX": SimpleQuote(2600.22),
+            "SPX": SimpleQuote(5400.0),
+        }
+        equity_spot = {k: RelinkableQuoteHandle(v) for k, v in equity_spot_quotes.items()}
+        # FX spot
+        fx_spot_quotes = {("SEK", "USD"): SimpleQuote(9.60)}
+        fx_spot = {k: RelinkableQuoteHandle(v) for k, v in fx_spot_quotes.items()}
+        # FX forward points
+        fx_fwd_point_quotes = {
+            ("SEK", "USD"): {
+                "1M": SimpleQuote(+0.010),
+                "3M": SimpleQuote(+0.025),
+                "6M": SimpleQuote(+0.045),
+                "1Y": SimpleQuote(+0.085),
+            }
+        }
+        fx_fwd_points = {
+            k: {tenor: RelinkableQuoteHandle(q) for tenor, q in v.items()}
+            for k, v in fx_fwd_point_quotes.items()
+        }
+        return cls(
+            as_of=as_of,
+            discount=discount,
+            dividend=dividend,
+            vols=vols,
+            equity_spot=equity_spot,
+            fx_spot=fx_spot,
+            fx_fwd_points=fx_fwd_points,
+        )
 
-    def add_equity_spot(self, equity: str, *, spot: float) -> None:
-        quote = SimpleQuote(spot)
-        handle = QuoteHandle(quote)
-        self.equity_spot[equity] = handle
-        self.equity_spot_quotes[equity] = quote
-
-    def add_fx_spot(self, pair: tuple[str, str], *, spot: float) -> None:
-        quote = SimpleQuote(spot)
-        handle = QuoteHandle(quote)
-        self.fx_spot[pair] = handle
-        self.fx_spot_quotes[pair] = quote
-
-    # ------------------------------------------------------------------
-    # Context manager
-    # ------------------------------------------------------------------
     @contextmanager
-    def at_eval(self) -> Iterator[MarketContext]:
-        """Set QuantLib's global evaluation date while within the context."""
+    def at_eval(self):
+        saved = Settings.instance().evaluationDate
+        try:
+            Settings.instance().evaluationDate = self.as_of
+            yield
+        finally:
+            Settings.instance().evaluationDate = saved
 
-        with SavedSettings():
-            Settings.instance().evaluationDate = self.evaluation_date
-            yield self
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-    def discount_handle(self, currency: str) -> RelinkableYieldTermStructureHandle:
-        return self.discount[currency]
-
-    def dividend_handle(self, equity: str) -> RelinkableYieldTermStructureHandle:
-        return self.dividend[equity]
-
-    def vol_handle(self, code: str) -> RelinkableBlackVolTermStructureHandle:
-        return self.vols[code]
-
-    def equity_spot_handle(self, equity: str) -> QuoteHandle:
-        return self.equity_spot[equity]
-
-    def fx_spot_handle(self, pair: tuple[str, str]) -> QuoteHandle:
-        return self.fx_spot[pair]
-
-    @property
-    def discount_handles(self) -> Mapping[str, RelinkableYieldTermStructureHandle]:
-        return MappingProxyType(self.discount)
-
-    @property
-    def dividend_handles(self) -> Mapping[str, RelinkableYieldTermStructureHandle]:
-        return MappingProxyType(self.dividend)
-
-    @property
-    def vol_handles(self) -> Mapping[str, RelinkableBlackVolTermStructureHandle]:
-        return MappingProxyType(self.vols)
-
-    @property
-    def equity_spot_handles(self) -> Mapping[str, QuoteHandle]:
-        return MappingProxyType(self.equity_spot)
-
-    @property
-    def fx_spot_handles(self) -> Mapping[tuple[str, str], QuoteHandle]:
-        return MappingProxyType(self.fx_spot)
+    def copy(self) -> "MarketContext":
+        """Create a shallow copy of the MarketContext with new handles and quotes."""
+        # Recreate all handles and quotes using the same values
+        as_of = Date(self.as_of.dayOfMonth(), self.as_of.month(), self.as_of.year())
+        discount = {k: RelinkableYieldTermStructureHandle(v.currentLink()) for k, v in self.discount.items()}
+        dividend = {k: RelinkableYieldTermStructureHandle(v.currentLink()) for k, v in self.dividend.items()}
+        vols = {k: RelinkableBlackVolTermStructureHandle(v.currentLink()) for k, v in self.vols.items()}
+        equity_spot = {k: RelinkableQuoteHandle(v.currentLink()) for k, v in self.equity_spot.items()}
+        fx_spot = {k: RelinkableQuoteHandle(v.currentLink()) for k, v in self.fx_spot.items()}
+        fx_fwd_points = {
+            k: {tenor: RelinkableQuoteHandle(q.currentLink()) for tenor, q in v.items()}
+            for k, v in self.fx_fwd_points.items()
+        }
+        return MarketContext(
+            as_of=as_of,
+            discount=discount,
+            dividend=dividend,
+            vols=vols,
+            equity_spot=equity_spot,
+            fx_spot=fx_spot,
+            fx_fwd_points=fx_fwd_points,
+        )
