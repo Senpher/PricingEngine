@@ -1,5 +1,6 @@
 """Tradable financial Instruments."""
 
+from .cap_floor import Cap, Floor
 from .cross_currency_swap import CrossCurrencySwap
 from .equity_option import (
     AmericanVanillaOption,
@@ -19,12 +20,14 @@ from .interest_rate_swap import InterestRateSwap
 from .swaption import Swaption
 
 __all__ = [
+    "Cap",
     "AmericanVanillaOption",
     "BermudanVanillaOption",
     "EquityOption",
     "EuropeanDigitalOption",
     "EuropeanVanillaOption",
     "CrossCurrencySwap",
+    "Floor",
     "FXAmericanVanillaOption",
     "FXBermudanVanillaOption",
     "FXEuropeanDigitalOption",
